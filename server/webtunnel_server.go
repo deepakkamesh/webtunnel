@@ -1,17 +1,23 @@
 package main
 
-import "log"
+import (
+	"fmt"
+	"log"
+)
 
 func main() {
 
 	// Initialize the handlers/routers.
-	router, err := NewRouter("en0")
+	fmt.Printf("Starting WebTunnel Client")
+	router, err := NewRouter("wlo1")
 	if err != nil {
 		log.Fatalf("Failed to inialize Router %s", err)
 	}
-	wshandler := NewWSHandler("192.168.1.111:8811", router)
+	wshandler := NewWSHandler("192.168.1.112:8811", router)
 
-	// STart the servers
+	// Start the servers
 	go wshandler.Start()
 	router.Start()
+	for {
+	}
 }
