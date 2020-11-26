@@ -17,18 +17,20 @@ import (
 
 func main() {
 
-	wsclient, err := NewWSClient("192.168.1.111:8811")
+	fmt.Println("Starting WebTunnel...")
+	wsclient, err := NewWSClient("192.168.1.112:8811")
 	if err != nil {
-		log.Fatalf("initializing websocket failed %s", wsclient.RemoteWSAddr)
+		log.Fatalf("initializing websocket failed %s", err)
 	}
-
 	ifce, err := NewIface(wsclient)
 	if err != nil {
 		log.Fatalf("initializing network failed %s", err)
 	}
 
+	fmt.Println("Initialization Complete.")
 	wsclient.SetIfaceConn(ifce.Ifce)
-	ifce.ProcessTUNPacket()
+	go ifce.ProcessTUNPacket()
+	wsclient.ProcessWSPacket()
 }
 
 type WSClient struct {
@@ -64,7 +66,7 @@ func (w *WSClient) ProcessWSPacket() {
 			log.Fatalf("Unknown message type")
 		}
 
-		fmt.Println("recv WS", gopacket.NewPacket(
+		fmt.Println("recv from WS", gopacket.NewPacket(
 			pkt,
 			layers.LayerTypeIPv4,
 			gopacket.Default,
@@ -94,7 +96,13 @@ func NewIface(ws *WSClient) (*Iface, error) {
 
 	// Assign IP.
 	// TODO: Handle other Operating Systems and add routing for network prefixs.
-	if err := exec.Command("/sbin/ifconfig", ifce.Name(), "10.0.0.2", "10.0.0.1", "up").Run(); err != nil {
+	// MAC only
+	cmd := exec.Command("/sbin/ifconfig", ifce.Name(), "10.0.0.2", "10.0.0.1", "up")
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("error setting ip on tun %s", err)
+	}
+	cmd = exec.Command("/sbin/route", "-n", "add", "-net", "172.16.0.0/24", "-interface", ifce.Name())
+	if err := cmd.Run(); err != nil {
 		return nil, fmt.Errorf("error setting ip on tun %s", err)
 	}
 
@@ -117,11 +125,10 @@ func (i *Iface) ProcessTUNPacket() {
 		if err := i.ws.wsconn.WriteMessage(websocket.BinaryMessage, pkt); err != nil {
 			log.Fatalf("error trying to write message to websocket: %s", err)
 		}
-		fmt.Println("recv TUN", gopacket.NewPacket(
+		fmt.Println("recv from TUN", gopacket.NewPacket(
 			pkt,
 			layers.LayerTypeIPv4,
 			gopacket.Default,
 		))
-
 	}
 }
