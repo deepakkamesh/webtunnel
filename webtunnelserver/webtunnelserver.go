@@ -60,11 +60,9 @@ func (r *WebTunnelServer) Start() {
 	// Start the HTTP Server.
 	http.HandleFunc("/", r.httpEndpoint)
 	http.HandleFunc("/ws", r.wsEndpoint)
-	go log.Fatal(http.ListenAndServe(r.serverIPPort, nil))
-
+	go func() { log.Fatal(http.ListenAndServe(r.serverIPPort, nil)) }()
 	// Read and process packets from the tunnel interface.
 	go r.processTUNPacket()
-
 }
 
 func (r *WebTunnelServer) Stop() {
@@ -78,12 +76,17 @@ func (r *WebTunnelServer) processTUNPacket() {
 		select {
 		case <-r.quitTUNProcessor:
 			return
+
 		default:
 			if _, err := r.ifce.Read(pkt); err != nil {
 				r.Error <- fmt.Errorf("error reading from tunnel %s", err)
 			}
 			//TODO: fixme
-			if err := r.Conns["10.0.0.2"].WriteMessage(websocket.BinaryMessage, pkt); err != nil {
+			ws := r.Conns["10.0.0.2"]
+			if ws == nil {
+				continue
+			}
+			if err := ws.WriteMessage(websocket.BinaryMessage, pkt); err != nil {
 				r.Error <- fmt.Errorf("error writing to websocket %s", err)
 			}
 			if r.enDiag {
@@ -93,6 +96,7 @@ func (r *WebTunnelServer) processTUNPacket() {
 					gopacket.Default,
 				))
 			}
+
 		}
 	}
 }
@@ -117,12 +121,10 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 			r.Error <- fmt.Errorf("error reading from websocket for %s: %s ", rcv.RemoteAddr, err)
 			return
 		}
+
 		if mt != websocket.BinaryMessage {
 			r.Error <- fmt.Errorf("unexpected message type Binary")
 			return
-		}
-		if err := sendNet(message, r.ifce); err != nil {
-			log.Fatalf("Error processing packet from WS %s", err)
 		}
 		if r.enDiag {
 			r.Diag <- fmt.Sprintln("recv from WS", gopacket.NewPacket(
@@ -130,6 +132,10 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 				layers.LayerTypeIPv4,
 				gopacket.Default,
 			))
+		}
+		if err := sendNet(message, r.ifce); err != nil {
+			r.Error <- fmt.Errorf("error writing to tunnel %s", err)
+			return
 		}
 	}
 }
@@ -177,11 +183,12 @@ func sendNet(pkt []byte, handle *water.Interface) error {
 		}
 	}
 
-	fmt.Println("send to Tun", gopacket.NewPacket(
-		buffer.Bytes(),
-		layers.LayerTypeEthernet,
-		gopacket.Default,
-	))
+	/*
+		fmt.Println("send to Tun", gopacket.NewPacket(
+			buffer.Bytes(),
+			layers.LayerTypeIPv4,
+			gopacket.Default,
+		)) */
 
 	if _, err := handle.Write(buffer.Bytes()); err != nil {
 		return fmt.Errorf("error sending to tun %s", err)
