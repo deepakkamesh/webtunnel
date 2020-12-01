@@ -71,6 +71,8 @@ func (w *WebtunnelClient) ProcessWSPacket() {
 	for {
 		select {
 		case <-w.quitWSProcessor:
+			// TODO: Send Close control message.
+			w.wsconn.Close()
 			return
 
 		default:
