@@ -1,13 +1,11 @@
 /*
 * Client for WebSocket VPN
  */
-package main
+package webtunnelclient
 
 import (
 	"fmt"
-	"log"
 	"net/url"
-	"os/exec"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
@@ -15,120 +13,109 @@ import (
 	"github.com/songgao/water"
 )
 
-func main() {
-
-	fmt.Println("Starting WebTunnel...")
-	wsclient, err := NewWSClient("192.168.1.112:8811")
-	if err != nil {
-		log.Fatalf("initializing websocket failed %s", err)
-	}
-	ifce, err := NewIface(wsclient)
-	if err != nil {
-		log.Fatalf("initializing network failed %s", err)
-	}
-
-	fmt.Println("Initialization Complete.")
-	wsclient.SetIfaceConn(ifce.Ifce)
-	go ifce.ProcessTUNPacket()
-	wsclient.ProcessWSPacket()
+type WebtunnelClient struct {
+	Error            chan error       // Channel to get error messages.
+	Diag             chan string      // Channel to get packet diagnostics.
+	enDiag           bool             // Enable packet diagnostics channel.
+	quitWSProcessor  chan struct{}    // Channel to handle shutdown websock processor.
+	quitTUNProcessor chan struct{}    // Channel to handle shutdown Tunnel processor.
+	wsconn           *websocket.Conn  // Websocket connection.
+	iconn            *water.Interface //Tunnel Interface.
 }
 
-type WSClient struct {
-	RemoteWSAddr string
-	wsconn       *websocket.Conn
-	iconn        *water.Interface
-}
-
-func NewWSClient(remoteAddr string) (*WSClient, error) {
-	u := url.URL{Scheme: "ws", Host: remoteAddr, Path: "/ws"}
-	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return &WSClient{
-		RemoteWSAddr: remoteAddr,
-		wsconn:       c,
-	}, nil
-}
-
-func (w *WSClient) SetIfaceConn(c *water.Interface) {
-	w.iconn = c
-}
-
-func (w *WSClient) ProcessWSPacket() {
-	for {
-		mt, pkt, err := w.wsconn.ReadMessage()
-		if err != nil {
-			log.Fatalf("read error %s", err)
-		}
-		if mt != websocket.BinaryMessage {
-			log.Fatalf("Unknown message type")
-		}
-
-		fmt.Println("recv from WS", gopacket.NewPacket(
-			pkt,
-			layers.LayerTypeIPv4,
-			gopacket.Default,
-		))
-
-		if _, err := w.iconn.Write(pkt); err != nil {
-			log.Fatalf("error writing on socket %s", err)
-		}
-	}
-}
-
-/***********Iface**********/
-type Iface struct {
-	Ifce *water.Interface
-	ws   *WSClient
-}
-
-func NewIface(ws *WSClient) (*Iface, error) {
+func NewWebtunnelClient(enDiag bool, serverIPPort string, routePrefix string) (*WebtunnelClient, error) {
 
 	// Create TUN interface.
-	ifce, err := water.New(water.Config{
+	iconn, err := water.New(water.Config{
 		DeviceType: water.TUN,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("error creating TUN int %s", err)
 	}
 
-	// Assign IP.
-	// TODO: Handle other Operating Systems and add routing for network prefixs.
-	// MAC only
-	cmd := exec.Command("/sbin/ifconfig", ifce.Name(), "10.0.0.2", "10.0.0.1", "up")
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("error setting ip on tun %s", err)
-	}
-	cmd = exec.Command("/sbin/route", "-n", "add", "-net", "172.16.0.0/24", "-interface", ifce.Name())
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("error setting ip on tun %s", err)
+	// Assign IP to tunnel and setup routing; OS specific.
+	if err := initializeTunnel("10.0.0.2", "10.0.0.1", iconn.Name(), routePrefix); err != nil {
+		return nil, err
 	}
 
-	return &Iface{
-		Ifce: ifce,
-		ws:   ws,
+	// Initialize websocket connection.
+	u := url.URL{Scheme: "ws", Host: serverIPPort, Path: "/ws"}
+	wsconn, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return &WebtunnelClient{
+		Error:            make(chan error),
+		Diag:             make(chan string),
+		enDiag:           enDiag,
+		quitTUNProcessor: make(chan struct{}),
+		quitWSProcessor:  make(chan struct{}),
+		wsconn:           wsconn,
+		iconn:            iconn,
 	}, nil
 }
 
-func (i *Iface) ProcessTUNPacket() {
+func (w *WebtunnelClient) Start() {
+	go w.ProcessTUNPacket()
+	go w.ProcessWSPacket()
+}
+
+func (w *WebtunnelClient) Stop() error {
+	w.quitTUNProcessor <- struct{}{}
+	w.quitWSProcessor <- struct{}{}
+	return nil
+}
+
+func (w *WebtunnelClient) ProcessWSPacket() {
+	for {
+		select {
+		case <-w.quitWSProcessor:
+			return
+
+		default:
+			mt, pkt, err := w.wsconn.ReadMessage()
+			if err != nil {
+				w.Error <- fmt.Errorf("error reading websocket %s", err)
+			}
+			if mt != websocket.BinaryMessage {
+				w.Error <- fmt.Errorf("unknown websocket message type")
+			}
+			if _, err := w.iconn.Write(pkt); err != nil {
+				w.Error <- fmt.Errorf("error writing to tunnel %s", err)
+			}
+			if w.enDiag {
+				w.Diag <- fmt.Sprintln("recv from WS", gopacket.NewPacket(
+					pkt,
+					layers.LayerTypeIPv4,
+					gopacket.Default,
+				))
+			}
+		}
+	}
+}
+
+func (w *WebtunnelClient) ProcessTUNPacket() {
 	pkt := make([]byte, 2000)
 	for {
-		_, err := i.Ifce.Read(pkt)
-		if err != nil {
-			log.Fatal(err)
+		select {
+		case <-w.quitTUNProcessor:
+			return
+
+		default:
+			if _, err := w.iconn.Read(pkt); err != nil {
+				w.Error <- fmt.Errorf("error reading tunnel %s", err)
+			}
+			if err := w.wsconn.WriteMessage(websocket.BinaryMessage, pkt); err != nil {
+				w.Error <- fmt.Errorf("error writing to websocket: %s", err)
+			}
+			if w.enDiag {
+				w.Diag <- fmt.Sprintln("recv from TUN", gopacket.NewPacket(
+					pkt,
+					layers.LayerTypeIPv4,
+					gopacket.Default,
+				))
+			}
 		}
-		if i.ws.wsconn == nil {
-			log.Fatalf("Invalid websocket connection")
-		}
-		if err := i.ws.wsconn.WriteMessage(websocket.BinaryMessage, pkt); err != nil {
-			log.Fatalf("error trying to write message to websocket: %s", err)
-		}
-		fmt.Println("recv from TUN", gopacket.NewPacket(
-			pkt,
-			layers.LayerTypeIPv4,
-			gopacket.Default,
-		))
 	}
 }
