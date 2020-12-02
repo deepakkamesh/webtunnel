@@ -1,10 +1,10 @@
 package webtunnelserver
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
-	"os/exec"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
@@ -38,12 +38,9 @@ func NewWebTunnelServer(enDiag bool, serverIPPort, tunIP, tunNetmask string) (*W
 		return nil, fmt.Errorf("error creating TUN int %s", err)
 	}
 	// Assign IP to TUN.
-	// TODO: Handle other Operating Systems and add routing for network prefixs.
-	cmd := exec.Command("/sbin/ifconfig", ifce.Name(), tunIP, "netmask", tunNetmask, "up")
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("error setting ip on tun %s", err)
+	if err := initializeTunnel(ifce.Name(), tunIP, tunNetmask); err != nil {
+		return nil, err
 	}
-
 	return &WebTunnelServer{
 		serverIPPort:     serverIPPort,
 		ifce:             ifce,
@@ -61,6 +58,7 @@ func (r *WebTunnelServer) Start() {
 	http.HandleFunc("/", r.httpEndpoint)
 	http.HandleFunc("/ws", r.wsEndpoint)
 	go func() { log.Fatal(http.ListenAndServe(r.serverIPPort, nil)) }()
+
 	// Read and process packets from the tunnel interface.
 	go r.processTUNPacket()
 }
@@ -96,7 +94,6 @@ func (r *WebTunnelServer) processTUNPacket() {
 					gopacket.Default,
 				))
 			}
-
 		}
 	}
 }
@@ -122,21 +119,53 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 			return
 		}
 
-		if mt != websocket.BinaryMessage {
-			r.Error <- fmt.Errorf("unexpected message type Binary")
-			return
+		switch mt {
+		case websocket.TextMessage: // Control message.
+			cfg := &ClientConfig{
+				Ip:        "10.0.0.2",
+				NetPrefix: "172.16.0.0/24",
+				GWIp:      "10.0.0.1",
+				ServerIP:  "192.168.1.117:8811",
+			}
+			jsonCfg, _ := json.Marshal(cfg)
+			if err := conn.WriteJson(jsonCfg); err != nil {
+				return err
+			}
+
+		case websocket.BinaryMessage: // Packet message.
+			if err := sendNet(message, r.ifce); err != nil {
+				r.Error <- fmt.Errorf("error writing to tunnel %s", err)
+				return
+			}
+			if r.enDiag {
+				r.Diag <- fmt.Sprintln("recv from WS", gopacket.NewPacket(
+					message,
+					layers.LayerTypeIPv4,
+					gopacket.Default,
+				))
+			}
 		}
-		if r.enDiag {
-			r.Diag <- fmt.Sprintln("recv from WS", gopacket.NewPacket(
-				message,
-				layers.LayerTypeIPv4,
-				gopacket.Default,
-			))
-		}
-		if err := sendNet(message, r.ifce); err != nil {
-			r.Error <- fmt.Errorf("error writing to tunnel %s", err)
-			return
-		}
+	}
+}
+
+type ClientConfig struct {
+	Ip        string `json:"ip"`        // IP address of client.
+	NetPrefix string `json:"netprefix"` // Network prefix to route.
+	GWIp      string `json:"gwip"`      // Gateway IP address.
+	ServerIP  string `json:"serverip"`  // IP/Hostname of the endpoint.
+}
+
+func configHandler(conn *websocket.Conn) error {
+
+	cfg := &ClientConfig{
+		Ip:        "10.0.0.2",
+		NetPrefix: "172.16.0.0/24",
+		GWIp:      "10.0.0.1",
+		ServerIP:  "192.168.1.117:8811",
+	}
+	jsonCfg, _ := json.Marshal(cfg)
+	if err := conn.WriteJson(jsonCfg); err != nil {
+		return err
 	}
 }
 
@@ -145,6 +174,7 @@ func (r *WebTunnelServer) httpEndpoint(w http.ResponseWriter, rcv *http.Request)
 	fmt.Fprint(w, "OK")
 }
 
+// sendNet sends packet on handle interface.
 func sendNet(pkt []byte, handle *water.Interface) error {
 
 	packet := gopacket.NewPacket(pkt, layers.LayerTypeIPv4, gopacket.Default)
