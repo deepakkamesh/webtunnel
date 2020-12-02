@@ -13,7 +13,7 @@ func main() {
 
 	fmt.Println("Initialization Complete.")
 
-	client, err := webtunnelclient.NewWebtunnelClient(true, "192.168.1.117:8811", "172.16.0.0/24")
+	client, err := webtunnelclient.NewWebtunnelClient(2, "192.168.1.117:8811")
 	if err != nil {
 		log.Fatalf("err %s", err)
 	}
