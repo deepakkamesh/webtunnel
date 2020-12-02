@@ -1,7 +1,6 @@
 package webtunnelserver
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -20,14 +19,14 @@ var upgrader = websocket.Upgrader{
 type WebTunnelServer struct {
 	serverIPPort     string                     // IP Port for binding on server.
 	ifce             *water.Interface           // Tunnel interface handle.
-	enDiag           bool                       // Enable packet dumps.
+	DiagLevel        bool                       // Enable packet dumps.
 	Diag             chan string                // Packet dump string.
 	Error            chan error                 // Channel to handle error from packet processors.
 	quitTUNProcessor chan struct{}              // Channel to get shutdown message.
 	Conns            map[string]*websocket.Conn // Websocket connection.
 }
 
-func NewWebTunnelServer(enDiag bool, serverIPPort, tunIP, tunNetmask string) (*WebTunnelServer, error) {
+func NewWebTunnelServer(DiagLevel bool, serverIPPort, tunIP, tunNetmask string) (*WebTunnelServer, error) {
 
 	// Create TUN interface.
 	ifce, err := water.New(
@@ -44,7 +43,7 @@ func NewWebTunnelServer(enDiag bool, serverIPPort, tunIP, tunNetmask string) (*W
 	return &WebTunnelServer{
 		serverIPPort:     serverIPPort,
 		ifce:             ifce,
-		enDiag:           enDiag,
+		DiagLevel:        DiagLevel,
 		Diag:             make(chan string),
 		Error:            make(chan error),
 		quitTUNProcessor: make(chan struct{}),
@@ -87,7 +86,7 @@ func (r *WebTunnelServer) processTUNPacket() {
 			if err := ws.WriteMessage(websocket.BinaryMessage, pkt); err != nil {
 				r.Error <- fmt.Errorf("error writing to websocket %s", err)
 			}
-			if r.enDiag {
+			if r.DiagLevel {
 				r.Diag <- fmt.Sprintln("recv from TUN ", gopacket.NewPacket(
 					pkt,
 					layers.LayerTypeIPv4,
@@ -121,15 +120,16 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 
 		switch mt {
 		case websocket.TextMessage: // Control message.
-			cfg := &ClientConfig{
-				Ip:        "10.0.0.2",
-				NetPrefix: "172.16.0.0/24",
-				GWIp:      "10.0.0.1",
-				ServerIP:  "192.168.1.117:8811",
-			}
-			jsonCfg, _ := json.Marshal(cfg)
-			if err := conn.WriteJSON(jsonCfg); err != nil {
-				return
+			if string(message) == "getConfig" {
+				cfg := &ClientConfig{
+					Ip:        "10.0.0.2",
+					NetPrefix: "172.16.0.0/24",
+					GWIp:      "10.0.0.1",
+					ServerIP:  "192.168.1.117:8811",
+				}
+				if err := conn.WriteJSON(cfg); err != nil {
+					return
+				}
 			}
 
 		case websocket.BinaryMessage: // Packet message.
@@ -137,7 +137,7 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 				r.Error <- fmt.Errorf("error writing to tunnel %s", err)
 				return
 			}
-			if r.enDiag {
+			if r.DiagLevel {
 				r.Diag <- fmt.Sprintln("recv from WS", gopacket.NewPacket(
 					message,
 					layers.LayerTypeIPv4,
@@ -148,27 +148,21 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 	}
 }
 
-type ClientConfig struct {
-	Ip        string `json:"ip"`        // IP address of client.
-	NetPrefix string `json:"netprefix"` // Network prefix to route.
-	GWIp      string `json:"gwip"`      // Gateway IP address.
-	ServerIP  string `json:"serverip"`  // IP/Hostname of the endpoint.
-}
-
+/*
 func configHandler(conn *websocket.Conn) error {
 
-	cfg := &ClientConfig{
+	cfg := ClientConfig{
 		Ip:        "10.0.0.2",
 		NetPrefix: "172.16.0.0/24",
 		GWIp:      "10.0.0.1",
 		ServerIP:  "192.168.1.117:8811",
 	}
-	jsonCfg, _ := json.Marshal(cfg)
-	if err := conn.WriteJSON(jsonCfg); err != nil {
+	//	jsonCfg, _ := json.Marshal(cfg)
+	if err := conn.WriteJSON(&cfg); err != nil {
 		return err
 	}
 	return nil
-}
+} */
 
 // httpEndpoint defines the HTTP / Path. The "Sender" will send an initial request to this URL.
 func (r *WebTunnelServer) httpEndpoint(w http.ResponseWriter, rcv *http.Request) {
