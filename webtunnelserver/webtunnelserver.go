@@ -133,7 +133,6 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 					RoutePrefix: r.routePrefix,
 					GWIp:        r.gwIP,
 				}
-				fmt.Println(cfg)
 				if err := conn.WriteJSON(cfg); err != nil {
 					return
 				}
