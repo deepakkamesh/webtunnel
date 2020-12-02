@@ -128,8 +128,8 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 				ServerIP:  "192.168.1.117:8811",
 			}
 			jsonCfg, _ := json.Marshal(cfg)
-			if err := conn.WriteJson(jsonCfg); err != nil {
-				return err
+			if err := conn.WriteJSON(jsonCfg); err != nil {
+				return
 			}
 
 		case websocket.BinaryMessage: // Packet message.
@@ -164,9 +164,10 @@ func configHandler(conn *websocket.Conn) error {
 		ServerIP:  "192.168.1.117:8811",
 	}
 	jsonCfg, _ := json.Marshal(cfg)
-	if err := conn.WriteJson(jsonCfg); err != nil {
+	if err := conn.WriteJSON(jsonCfg); err != nil {
 		return err
 	}
+	return nil
 }
 
 // httpEndpoint defines the HTTP / Path. The "Sender" will send an initial request to this URL.
