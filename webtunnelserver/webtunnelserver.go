@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/deepakkamesh/webtunnel/webtunnelcommon"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/gorilla/websocket"
@@ -92,7 +93,7 @@ func (r *WebTunnelServer) processTUNPacket() {
 			if err := ws.WriteMessage(websocket.BinaryMessage, pkt); err != nil {
 				r.Error <- fmt.Errorf("error writing to websocket %s", err)
 			}
-			if r.DiagLevel >= DiagLevelDebug {
+			if r.DiagLevel >= webtunnelcommon.DiagLevelDebug {
 				r.Diag <- fmt.Sprintln("recv from TUN ", gopacket.NewPacket(
 					pkt,
 					layers.LayerTypeIPv4,
@@ -127,11 +128,12 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 		switch mt {
 		case websocket.TextMessage: // Control message.
 			if string(message) == "getConfig" {
-				cfg := &ClientConfig{
-					Ip:              "10.0.0.2",
-					ClientNetPrefix: r.clientNetPrefix,
-					GWIp:            r.gwIP,
+				cfg := &webtunnelcommon.ClientConfig{
+					Ip:          "10.0.0.2",
+					RoutePrefix: r.routePrefix,
+					GWIp:        r.gwIP,
 				}
+				fmt.Println(cfg)
 				if err := conn.WriteJSON(cfg); err != nil {
 					return
 				}
@@ -142,7 +144,7 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 				r.Error <- fmt.Errorf("error writing to tunnel %s", err)
 				return
 			}
-			if r.DiagLevel >= DiagLevelDebug {
+			if r.DiagLevel >= webtunnelcommon.DiagLevelDebug {
 				r.Diag <- fmt.Sprintln("recv from WS", gopacket.NewPacket(
 					message,
 					layers.LayerTypeIPv4,
@@ -152,22 +154,6 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 		}
 	}
 }
-
-/*
-func configHandler(conn *websocket.Conn) error {
-
-	cfg := ClientConfig{
-		Ip:        "10.0.0.2",
-		NetPrefix: "172.16.0.0/24",
-		GWIp:      "10.0.0.1",
-		ServerIP:  "192.168.1.117:8811",
-	}
-	//	jsonCfg, _ := json.Marshal(cfg)
-	if err := conn.WriteJSON(&cfg); err != nil {
-		return err
-	}
-	return nil
-} */
 
 // httpEndpoint defines the HTTP / Path. The "Sender" will send an initial request to this URL.
 func (r *WebTunnelServer) httpEndpoint(w http.ResponseWriter, rcv *http.Request) {

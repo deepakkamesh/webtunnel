@@ -10,7 +10,7 @@ import (
 func main() {
 
 	fmt.Println("starting..")
-	server, err := webtunnelserver.NewWebTunnelServer(true, "192.168.1.117:8811", "10.0.0.1", "255.255.255.0")
+	server, err := webtunnelserver.NewWebTunnelServer(2, "192.168.1.117:8811", "10.0.0.1", "255.255.255.0", "172.16.0.0/24", "10.0.0.0/24")
 	if err != nil {
 		log.Fatalf("%s", err)
 	}
