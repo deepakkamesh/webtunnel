@@ -29,9 +29,11 @@ type WebTunnelServer struct {
 	clientNetPrefix  string                     // IP range for clients.
 	gwIP             string                     // Tunnel IP address of server.
 	ipam             *IPPam                     // Client IP Address manager.
+	httpsKeyFile     string                     // Key file for HTTPS.
+	httpsCertFile    string                     // Cert file for HTTPS.
 }
 
-func NewWebTunnelServer(DiagLevel int, serverIPPort, gwIP, tunNetmask, routePrefix, clientNetPrefix string) (*WebTunnelServer, error) {
+func NewWebTunnelServer(DiagLevel int, serverIPPort, gwIP, tunNetmask, routePrefix, clientNetPrefix, httpsKeyFile, httpsCertFile string) (*WebTunnelServer, error) {
 
 	// Create TUN interface and initialize it.
 	ifce, err := water.New(
@@ -65,6 +67,8 @@ func NewWebTunnelServer(DiagLevel int, serverIPPort, gwIP, tunNetmask, routePref
 		clientNetPrefix:  clientNetPrefix,
 		gwIP:             gwIP,
 		ipam:             ipam,
+		httpsKeyFile:     httpsKeyFile,
+		httpsCertFile:    httpsCertFile,
 	}, nil
 }
 
@@ -73,7 +77,7 @@ func (r *WebTunnelServer) Start() {
 	// Start the HTTP Server.
 	http.HandleFunc("/", r.httpEndpoint)
 	http.HandleFunc("/ws", r.wsEndpoint)
-	go func() { log.Fatal(http.ListenAndServe(r.serverIPPort, nil)) }()
+	go func() { log.Fatal(http.ListenAndServeTLS(r.serverIPPort, r.httpsCertFile, r.httpsKeyFile, nil)) }()
 
 	// Read and process packets from the tunnel interface.
 	go r.processTUNPacket()
