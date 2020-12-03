@@ -28,11 +28,12 @@ type WebTunnelServer struct {
 	routePrefix      string                     // Route prefix for client config.
 	clientNetPrefix  string                     // IP range for clients.
 	gwIP             string                     // Tunnel IP address of server.
+	ipam             *IPPam                     // Client IP Address manager.
 }
 
 func NewWebTunnelServer(DiagLevel int, serverIPPort, gwIP, tunNetmask, routePrefix, clientNetPrefix string) (*WebTunnelServer, error) {
 
-	// Create TUN interface.
+	// Create TUN interface and initialize it.
 	ifce, err := water.New(
 		water.Config{
 			DeviceType: water.TUN,
@@ -40,8 +41,16 @@ func NewWebTunnelServer(DiagLevel int, serverIPPort, gwIP, tunNetmask, routePref
 	if err != nil {
 		return nil, fmt.Errorf("error creating TUN int %s", err)
 	}
-	// Assign IP to TUN.
 	if err := initializeTunnel(ifce.Name(), gwIP, tunNetmask); err != nil {
+		return nil, err
+	}
+
+	ipam, err := NewIPPam(clientNetPrefix)
+	if err != nil {
+		return nil, err
+	}
+	// Reserve the gateway IP from being given out.
+	if err := ipam.AcquireSpecificIP(gwIP, struct{}{}); err != nil {
 		return nil, err
 	}
 	return &WebTunnelServer{
@@ -55,6 +64,7 @@ func NewWebTunnelServer(DiagLevel int, serverIPPort, gwIP, tunNetmask, routePref
 		routePrefix:      routePrefix,
 		clientNetPrefix:  clientNetPrefix,
 		gwIP:             gwIP,
+		ipam:             ipam,
 	}, nil
 }
 
@@ -73,6 +83,7 @@ func (r *WebTunnelServer) Stop() {
 	r.quitTUNProcessor <- struct{}{}
 }
 
+// processTUNPacket processes the packets read from tunnel.
 func (r *WebTunnelServer) processTUNPacket() {
 
 	pkt := make([]byte, 2000)
@@ -85,11 +96,15 @@ func (r *WebTunnelServer) processTUNPacket() {
 			if _, err := r.ifce.Read(pkt); err != nil {
 				r.Error <- fmt.Errorf("error reading from tunnel %s", err)
 			}
-			//TODO: fixme
-			ws := r.Conns["10.0.0.2"]
-			if ws == nil {
+			// Get dst IP and corresponding websocket connection.
+			packet := gopacket.NewPacket(pkt, layers.LayerTypeIPv4, gopacket.Default)
+			ip, _ := packet.Layer(layers.LayerTypeIPv4).(*layers.IPv4)
+			data, err := r.ipam.GetData(ip.DstIP.String())
+			if err != nil {
 				continue
 			}
+			ws := data.(*websocket.Conn)
+
 			if err := ws.WriteMessage(websocket.BinaryMessage, pkt); err != nil {
 				r.Error <- fmt.Errorf("error writing to websocket %s", err)
 			}
@@ -115,8 +130,11 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 	}
 	defer conn.Close()
 
-	// Add connection to Router. // TODO fix.
-	r.Conns["10.0.0.2"] = conn
+	// Get IP and add to ip management.
+	ip, err := r.ipam.AcquireIP(conn)
+	if err != nil {
+		return
+	}
 
 	for {
 		mt, message, err := conn.ReadMessage()
@@ -129,7 +147,7 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 		case websocket.TextMessage: // Control message.
 			if string(message) == "getConfig" {
 				cfg := &webtunnelcommon.ClientConfig{
-					Ip:          "10.0.0.2",
+					Ip:          ip,
 					RoutePrefix: r.routePrefix,
 					GWIp:        r.gwIP,
 				}
