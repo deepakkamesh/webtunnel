@@ -4,6 +4,7 @@
 package webtunnelclient
 
 import (
+	"crypto/tls"
 	"fmt"
 	"net/url"
 
@@ -24,7 +25,7 @@ type WebtunnelClient struct {
 	iconn            *water.Interface // Tunnel Interface.
 }
 
-func NewWebtunnelClient(DiagLevel int, serverIPPort string) (*WebtunnelClient, error) {
+func NewWebtunnelClient(DiagLevel int, serverIPPort string, tlsVerify bool) (*WebtunnelClient, error) {
 
 	// Create TUN interface.
 	iconn, err := water.New(water.Config{
@@ -35,8 +36,10 @@ func NewWebtunnelClient(DiagLevel int, serverIPPort string) (*WebtunnelClient, e
 	}
 
 	// Initialize websocket connection.
-	u := url.URL{Scheme: "ws", Host: serverIPPort, Path: "/ws"}
-	wsconn, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+	u := url.URL{Scheme: "wss", Host: serverIPPort, Path: "/ws"}
+	wsDialer := websocket.Dialer{}
+	wsDialer.TLSClientConfig = &tls.Config{InsecureSkipVerify: tlsVerify}
+	wsconn, _, err := wsDialer.Dial(u.String(), nil)
 	if err != nil {
 		return nil, err
 	}
