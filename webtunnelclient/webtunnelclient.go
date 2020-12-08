@@ -10,17 +10,11 @@ import (
 	"net/url"
 
 	"github.com/deepakkamesh/webtunnel/webtunnelcommon"
-	"github.com/google/gopacket"
-	"github.com/google/gopacket/layers"
+	"github.com/golang/glog"
 	"github.com/gorilla/websocket"
 )
 
 type WebtunnelClient struct {
-	Error            chan error      // Channel to get error messages.
-	Diag             chan string     // Channel to get diagnostics messages.
-	DiagLevel        int             // Enable diagnostics channel level. 0 none; 1 info 2 debug
-	quitWSProcessor  chan struct{}   // Channel to handle shutdown websock processor.
-	quitTUNProcessor chan struct{}   // Channel to handle shutdown Tunnel processor.
 	wsconn           *websocket.Conn // Websocket connection.
 	daemonConn       net.Conn        // Daemon UDP Interface.
 	clientDaemonPort int             // Port number of Client Daemon.
@@ -39,6 +33,7 @@ func NewWebtunnelClient(DiagLevel int, serverIPPort string, wsDialer *websocket.
 	if err != nil {
 		return nil, err
 	}
+	glog.V(1).Info("Connected to Daemon")
 
 	err = setClientDaemonCfg(wsconn, daemonPort, conn.LocalAddr())
 	if err != nil {
@@ -46,13 +41,8 @@ func NewWebtunnelClient(DiagLevel int, serverIPPort string, wsDialer *websocket.
 	}
 
 	return &WebtunnelClient{
-		Error:            make(chan error),
-		Diag:             make(chan string),
-		DiagLevel:        DiagLevel,
-		quitTUNProcessor: make(chan struct{}),
-		quitWSProcessor:  make(chan struct{}),
-		wsconn:           wsconn,
-		daemonConn:       conn,
+		wsconn:     wsconn,
+		daemonConn: conn,
 	}, nil
 }
 
@@ -66,6 +56,7 @@ func setClientDaemonCfg(conn *websocket.Conn, daemonPort int, addr net.Addr) err
 	if err := conn.ReadJSON(cfg); err != nil {
 		return err
 	}
+	glog.V(1).Infof("Got config from server %v", *cfg)
 
 	// Send configuration to clientDaemon.
 	args := SetIPArgs{
@@ -89,6 +80,7 @@ func setClientDaemonCfg(conn *websocket.Conn, daemonPort int, addr net.Addr) err
 		return err
 	}
 
+	glog.V(1).Info("Daemon configured successfully")
 	return nil
 }
 
@@ -98,62 +90,40 @@ func (w *WebtunnelClient) Start() {
 }
 
 func (w *WebtunnelClient) Stop() error {
-	w.quitTUNProcessor <- struct{}{}
-	w.quitWSProcessor <- struct{}{}
+	w.wsconn.Close()
 	return nil
 }
 
 func (w *WebtunnelClient) ProcessWSPacket() {
 	for {
-		select {
-		case <-w.quitWSProcessor:
-			// TODO: Send Close control message.
-			w.wsconn.Close()
-			return
-
-		default:
-			mt, pkt, err := w.wsconn.ReadMessage()
-			if err != nil {
-				w.Error <- fmt.Errorf("error reading websocket %s", err)
-			}
-			if mt != websocket.BinaryMessage {
-				w.Error <- fmt.Errorf("unknown websocket message type")
-			}
-			if w.DiagLevel >= webtunnelcommon.DiagLevelDebug {
-				w.Diag <- fmt.Sprintln("Client recv from WS:", gopacket.NewPacket(
-					pkt,
-					layers.LayerTypeIPv4,
-					gopacket.Default,
-				))
-			}
-			if _, err := w.daemonConn.Write(pkt); err != nil {
-				w.Error <- fmt.Errorf("error writing to net daemon %s", err)
-			}
+		mt, pkt, err := w.wsconn.ReadMessage()
+		if err != nil {
+			glog.Warningf("Error reading websocket %s", err)
+			continue
+		}
+		if mt != websocket.BinaryMessage {
+			glog.Warningf("Binary message type recvd from websocket")
+			continue
+		}
+		webtunnelcommon.PrintPacketIPv4(pkt, "Client <- WebSocket")
+		if _, err := w.daemonConn.Write(pkt); err != nil {
+			glog.Warningf("Error writing to net daemon %s", err)
+			continue
 		}
 	}
 }
 
 func (w *WebtunnelClient) ProcessNetPacket() {
-	pkt := make([]byte, 2000)
+	pkt := make([]byte, 2048)
 	for {
-		select {
-		case <-w.quitTUNProcessor:
-			return
-
-		default:
-			if _, err := w.daemonConn.Read(pkt); err != nil {
-				w.Error <- fmt.Errorf("error reading daemon %s", err)
-			}
-			if w.DiagLevel >= webtunnelcommon.DiagLevelDebug {
-				w.Diag <- fmt.Sprintln("Client recv from Daemon:", gopacket.NewPacket(
-					pkt,
-					layers.LayerTypeIPv4,
-					gopacket.Default,
-				))
-			}
-			if err := w.wsconn.WriteMessage(websocket.BinaryMessage, pkt); err != nil {
-				w.Error <- fmt.Errorf("error writing to websocket: %s", err)
-			}
+		if _, err := w.daemonConn.Read(pkt); err != nil {
+			glog.Warningf("error reading daemon %s", err)
+			continue
+		}
+		webtunnelcommon.PrintPacketIPv4(pkt, "Client <- NetDaemon")
+		if err := w.wsconn.WriteMessage(websocket.BinaryMessage, pkt); err != nil {
+			glog.Warningf("error writing to websocket: %s", err)
+			continue
 		}
 	}
 }
