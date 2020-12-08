@@ -119,15 +119,15 @@ func (w *WebtunnelClient) ProcessWSPacket() {
 			if mt != websocket.BinaryMessage {
 				w.Error <- fmt.Errorf("unknown websocket message type")
 			}
-			if _, err := w.daemonConn.Write(pkt); err != nil {
-				w.Error <- fmt.Errorf("error writing to net daemon %s", err)
-			}
 			if w.DiagLevel >= webtunnelcommon.DiagLevelDebug {
 				w.Diag <- fmt.Sprintln("Client recv from WS:", gopacket.NewPacket(
 					pkt,
 					layers.LayerTypeIPv4,
 					gopacket.Default,
 				))
+			}
+			if _, err := w.daemonConn.Write(pkt); err != nil {
+				w.Error <- fmt.Errorf("error writing to net daemon %s", err)
 			}
 		}
 	}
@@ -144,15 +144,15 @@ func (w *WebtunnelClient) ProcessNetPacket() {
 			if _, err := w.daemonConn.Read(pkt); err != nil {
 				w.Error <- fmt.Errorf("error reading daemon %s", err)
 			}
-			if err := w.wsconn.WriteMessage(websocket.BinaryMessage, pkt); err != nil {
-				w.Error <- fmt.Errorf("error writing to websocket: %s", err)
-			}
 			if w.DiagLevel >= webtunnelcommon.DiagLevelDebug {
 				w.Diag <- fmt.Sprintln("Client recv from Daemon:", gopacket.NewPacket(
 					pkt,
 					layers.LayerTypeIPv4,
 					gopacket.Default,
 				))
+			}
+			if err := w.wsconn.WriteMessage(websocket.BinaryMessage, pkt); err != nil {
+				w.Error <- fmt.Errorf("error writing to websocket: %s", err)
 			}
 		}
 	}

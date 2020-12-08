@@ -12,16 +12,6 @@ import (
 
 func main() {
 	daemonPort := 3344
-	fmt.Println("Starting ClientDaemon...")
-	// Initialize and Startup Client Daemon to handle network interface.
-	daemon, err := webtunnelclient.NewClientDaemon(daemonPort, webtunnelcommon.DiagLevelDebug)
-	if err != nil {
-		log.Fatalf("Daemon Init failed:%v", err)
-	}
-	if err := daemon.Start(); err != nil {
-		log.Fatalf("Failed start Daemon:%v", err)
-	}
-
 	// Initialize and Startup Webtunnel.
 	fmt.Println("Starting WebTunnel...")
 	wsDialer := websocket.Dialer{}
@@ -38,10 +28,6 @@ func main() {
 		case diag := <-client.Diag:
 			log.Println(diag)
 		case err := <-client.Error:
-			log.Println(err)
-		case diag := <-daemon.Diag:
-			log.Println(diag)
-		case err := <-daemon.Error:
 			log.Println(err)
 		}
 	}
