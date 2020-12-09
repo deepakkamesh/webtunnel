@@ -7,19 +7,13 @@ import (
 	"net/rpc"
 
 	"github.com/deepakkamesh/webtunnel/webtunnelcommon"
-	"github.com/google/gopacket"
-	"github.com/google/gopacket/layers"
+	"github.com/golang/glog"
 	"github.com/songgao/water"
 )
 
 type NetIfce struct {
-	IP          string           // Interface Ip.
-	GWIP        string           // Tunnel endpoint.
-	RoutePrefix string           // Route through device.
-	handle      *water.Interface // Handle to interface.
-	RemoteAddr  *net.UDPAddr     // remote IP for client.
-}
-type Addr struct {
+	handle     *water.Interface // Handle to interface.
+	RemoteAddr *net.UDPAddr     // remote IP for client.
 }
 
 type SetIPArgs struct {
@@ -29,7 +23,6 @@ type SetIPArgs struct {
 
 // NetNetIfce create a new tunnel interface.
 func NewNetIfce() (*NetIfce, error) {
-	// Create TUN interface.
 	handle, err := water.New(water.Config{
 		DeviceType: water.TUN,
 	})
@@ -42,14 +35,17 @@ func NewNetIfce() (*NetIfce, error) {
 }
 
 func (i *NetIfce) SetIP(a SetIPArgs, r *struct{}) error {
+	glog.V(1).Infof("Got net config from client IP:%s, GW:%s, Ifce:%s", a.IP, a.GWIP, i.handle.Name())
 	return SetIP(a.IP, a.GWIP, i.handle.Name())
 }
 
 func (i *NetIfce) SetRoute(routePrefix string, r *struct{}) error {
+	glog.V(1).Infof("Got route info from client:%s", routePrefix)
 	return SetRoute(routePrefix, i.handle.Name())
 }
 
 func (i *NetIfce) SetRemote(addr *net.UDPAddr, r *struct{}) error {
+	glog.V(1).Infof("New remote endpoint connected: %s", addr.String())
 	i.RemoteAddr = addr
 	return nil
 }
@@ -59,9 +55,6 @@ type ClientDaemon struct {
 	DaemonPort int
 	NetIfce    *NetIfce
 	pktConn    *net.UDPConn
-	Error      chan error
-	Diag       chan string
-	DiagLevel  int
 }
 
 // NewClientDaemon returns an initialized Client Daemon.
@@ -82,9 +75,6 @@ func NewClientDaemon(daemonPort int, diagLevel int) (*ClientDaemon, error) {
 		DaemonPort: daemonPort,
 		NetIfce:    netIfce,
 		pktConn:    ser,
-		Error:      make(chan error),
-		Diag:       make(chan string),
-		DiagLevel:  diagLevel,
 	}, nil
 }
 
@@ -109,20 +99,15 @@ func (c *ClientDaemon) Start() error {
 
 func (c *ClientDaemon) processNetPkt() {
 	pkt := make([]byte, 2048)
-	var err error
 	for {
-		if _, _, err = c.pktConn.ReadFrom(pkt); err != nil {
-			c.Error <- fmt.Errorf("error reading udp %s", err)
+		if _, _, err := c.pktConn.ReadFrom(pkt); err != nil {
+			glog.Warningf("Error reading udp %s", err)
+			continue
 		}
+		webtunnelcommon.PrintPacketIPv4(pkt, "Daemon <- Client")
 		if _, err := c.NetIfce.handle.Write(pkt); err != nil {
-			c.Error <- fmt.Errorf("error writing to tunnel %s", err)
-		}
-		if c.DiagLevel >= webtunnelcommon.DiagLevelDebug {
-			c.Diag <- fmt.Sprintln("Daemon recv from Client", gopacket.NewPacket(
-				pkt,
-				layers.LayerTypeIPv4,
-				gopacket.Default,
-			))
+			glog.Warningf("Error writing to tunnel %s", err)
+			continue
 		}
 	}
 }
@@ -131,17 +116,13 @@ func (c *ClientDaemon) processTUNPkt() {
 	pkt := make([]byte, 2048)
 	for {
 		if _, err := c.NetIfce.handle.Read(pkt); err != nil {
-			c.Error <- fmt.Errorf("error reading tunnel %s", err)
+			glog.Warningf("Error reading tunnel %s", err)
+			continue
 		}
+		webtunnelcommon.PrintPacketIPv4(pkt, "Daemon -> Client")
 		if _, err := c.pktConn.WriteTo(pkt, c.NetIfce.RemoteAddr); err != nil {
-			c.Error <- fmt.Errorf("error writing to websocket: %s", err)
-		}
-		if c.DiagLevel >= webtunnelcommon.DiagLevelDebug {
-			c.Diag <- fmt.Sprintln("Daemon recv from TUN", gopacket.NewPacket(
-				pkt,
-				layers.LayerTypeIPv4,
-				gopacket.Default,
-			))
+			glog.Warningf("Error writing to websocket: %s", err)
+			continue
 		}
 	}
 }
