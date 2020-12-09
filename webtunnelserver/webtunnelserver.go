@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/deepakkamesh/webtunnel/webtunnelcommon"
+	"github.com/golang/glog"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/gorilla/websocket"
@@ -20,9 +21,6 @@ var upgrader = websocket.Upgrader{
 type WebTunnelServer struct {
 	serverIPPort     string                     // IP Port for binding on server.
 	ifce             *water.Interface           // Tunnel interface handle.
-	DiagLevel        int                        // Enable packet dumps.
-	Diag             chan string                // Packet dump string.
-	Error            chan error                 // Channel to handle error from packet processors.
 	quitTUNProcessor chan struct{}              // Channel to get shutdown message.
 	Conns            map[string]*websocket.Conn // Websocket connection.
 	routePrefix      string                     // Route prefix for client config.
@@ -33,7 +31,7 @@ type WebTunnelServer struct {
 	httpsCertFile    string                     // Cert file for HTTPS.
 }
 
-func NewWebTunnelServer(DiagLevel int, serverIPPort, gwIP, tunNetmask, routePrefix, clientNetPrefix, httpsKeyFile, httpsCertFile string) (*WebTunnelServer, error) {
+func NewWebTunnelServer(serverIPPort, gwIP, tunNetmask, clientNetPrefix, routePrefix, httpsKeyFile, httpsCertFile string) (*WebTunnelServer, error) {
 
 	// Create TUN interface and initialize it.
 	ifce, err := water.New(
@@ -58,9 +56,6 @@ func NewWebTunnelServer(DiagLevel int, serverIPPort, gwIP, tunNetmask, routePref
 	return &WebTunnelServer{
 		serverIPPort:     serverIPPort,
 		ifce:             ifce,
-		DiagLevel:        DiagLevel,
-		Diag:             make(chan string),
-		Error:            make(chan error),
 		quitTUNProcessor: make(chan struct{}),
 		Conns:            make(map[string]*websocket.Conn),
 		routePrefix:      routePrefix,
@@ -90,46 +85,38 @@ func (r *WebTunnelServer) Stop() {
 // processTUNPacket processes the packets read from tunnel.
 func (r *WebTunnelServer) processTUNPacket() {
 
-	pkt := make([]byte, 2000)
+	pkt := make([]byte, 2048)
 	for {
-		select {
-		case <-r.quitTUNProcessor:
-			return
+		if _, err := r.ifce.Read(pkt); err != nil {
+			glog.Warningf("error reading from tunnel %s", err)
+			continue
+		}
 
-		default:
-			if _, err := r.ifce.Read(pkt); err != nil {
-				r.Error <- fmt.Errorf("error reading from tunnel %s", err)
-			}
-			// Get dst IP and corresponding websocket connection.
-			packet := gopacket.NewPacket(pkt, layers.LayerTypeIPv4, gopacket.Default)
-			ip, _ := packet.Layer(layers.LayerTypeIPv4).(*layers.IPv4)
-			data, err := r.ipam.GetData(ip.DstIP.String())
-			if err != nil {
-				continue
-			}
-			ws := data.(*websocket.Conn)
+		// Get dst IP and corresponding websocket connection.
+		packet := gopacket.NewPacket(pkt, layers.LayerTypeIPv4, gopacket.Default)
+		ip, _ := packet.Layer(layers.LayerTypeIPv4).(*layers.IPv4)
+		data, err := r.ipam.GetData(ip.DstIP.String())
+		if err != nil {
+			glog.Warningf("unsolicited packet from IP:%v", ip.DstIP.String())
+			continue
+		}
 
-			if err := ws.WriteMessage(websocket.BinaryMessage, pkt); err != nil {
-				r.Error <- fmt.Errorf("error writing to websocket %s", err)
-			}
-			if r.DiagLevel >= webtunnelcommon.DiagLevelDebug {
-				r.Diag <- fmt.Sprintln("recv from TUN ", gopacket.NewPacket(
-					pkt,
-					layers.LayerTypeIPv4,
-					gopacket.Default,
-				))
-			}
+		webtunnelcommon.PrintPacketIPv4(pkt, "Server <- Tunnel")
+
+		ws := data.(*websocket.Conn)
+		if err := ws.WriteMessage(websocket.BinaryMessage, pkt); err != nil {
+			glog.Warningf("error writing to websocket %s", err)
+			continue
 		}
 	}
 }
 
 // wsEndpoint defines HTTP Websocket Path and upgrades the HTTP connection.
 func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
-
 	// Upgrade HTTP connection to a WebSocket connection.
 	conn, err := upgrader.Upgrade(w, rcv, nil)
 	if err != nil {
-		log.Printf("Error upgrading to websocket: %s\n", err)
+		glog.Errorf("Error upgrading to websocket: %s\n", err)
 		return
 	}
 	defer conn.Close()
@@ -137,15 +124,18 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 	// Get IP and add to ip management.
 	ip, err := r.ipam.AcquireIP(conn)
 	if err != nil {
+		glog.Errorf("error acquiring IP:%v", err)
 		return
 	}
 
+	// Process websocket packet.
 	for {
 		mt, message, err := conn.ReadMessage()
 		if err != nil {
-			r.Error <- fmt.Errorf("error reading from websocket for %s: %s ", rcv.RemoteAddr, err)
+			glog.Warningf("error reading from websocket for %s: %s ", rcv.RemoteAddr, err)
 			return
 		}
+		webtunnelcommon.PrintPacketIPv4(message, "Server <- Websocket")
 
 		switch mt {
 		case websocket.TextMessage: // Control message.
@@ -156,21 +146,15 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 					GWIp:        r.gwIP,
 				}
 				if err := conn.WriteJSON(cfg); err != nil {
+					glog.Errorf("error sending config to client: %v", err)
 					return
 				}
 			}
 
 		case websocket.BinaryMessage: // Packet message.
 			if err := sendNet(message, r.ifce); err != nil {
-				r.Error <- fmt.Errorf("error writing to tunnel %s", err)
+				glog.Warningf("error writing to tunnel %s", err)
 				return
-			}
-			if r.DiagLevel >= webtunnelcommon.DiagLevelDebug {
-				r.Diag <- fmt.Sprintln("recv from WS", gopacket.NewPacket(
-					message,
-					layers.LayerTypeIPv4,
-					gopacket.Default,
-				))
 			}
 		}
 	}
@@ -219,14 +203,6 @@ func sendNet(pkt []byte, handle *water.Interface) error {
 			return fmt.Errorf("error serializelayer %s", err)
 		}
 	}
-
-	/*
-		fmt.Println("send to Tun", gopacket.NewPacket(
-			buffer.Bytes(),
-			layers.LayerTypeIPv4,
-			gopacket.Default,
-		)) */
-
 	if _, err := handle.Write(buffer.Bytes()); err != nil {
 		return fmt.Errorf("error sending to tun %s", err)
 	}
