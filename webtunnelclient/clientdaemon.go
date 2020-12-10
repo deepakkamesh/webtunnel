@@ -97,17 +97,22 @@ func (c *ClientDaemon) Start() error {
 	return nil
 }
 
+func (c *ClientDaemon) Stop() error {
+	if err := c.NetIfce.handle.Close(); err != nil {
+		return err
+	}
+	return c.pktConn.Close()
+}
+
 func (c *ClientDaemon) processNetPkt() {
 	pkt := make([]byte, 2048)
 	for {
 		if _, _, err := c.pktConn.ReadFrom(pkt); err != nil {
-			glog.Warningf("Error reading udp %s", err)
-			continue
+			glog.Fatalf("Error reading udp %s", err)
 		}
 		webtunnelcommon.PrintPacketIPv4(pkt, "Daemon <- Client")
 		if _, err := c.NetIfce.handle.Write(pkt); err != nil {
-			glog.Warningf("Error writing to tunnel %s", err)
-			continue
+			glog.Fatalf("Error writing to tunnel %s", err)
 		}
 	}
 }
@@ -116,13 +121,11 @@ func (c *ClientDaemon) processTUNPkt() {
 	pkt := make([]byte, 2048)
 	for {
 		if _, err := c.NetIfce.handle.Read(pkt); err != nil {
-			glog.Warningf("Error reading tunnel %s", err)
-			continue
+			glog.Fatalf("Error reading tunnel %s", err)
 		}
 		webtunnelcommon.PrintPacketIPv4(pkt, "Daemon -> Client")
 		if _, err := c.pktConn.WriteTo(pkt, c.NetIfce.RemoteAddr); err != nil {
-			glog.Warningf("Error writing to websocket: %s", err)
-			continue
+			glog.Fatalf("Error writing to websocket: %s", err)
 		}
 	}
 }

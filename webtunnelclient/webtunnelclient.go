@@ -30,18 +30,6 @@ func NewWebtunnelClient(DiagLevel int, serverIPPort string, wsDialer *websocket.
 		return nil, err
 	}
 
-	// set pong.
-	wsconn.SetPongHandler(func(data string) error {
-		return nil
-	})
-	ticker := time.NewTicker(5 * time.Second)
-	go func() {
-		for {
-			<-ticker.C
-			wsconn.WriteControl(websocket.PingMessage, []byte("hello server"), time.Now().Add(10*time.Second))
-		}
-	}()
-
 	conn, err := net.Dial("udp", fmt.Sprintf("127.0.0.1:%d", daemonPort))
 	if err != nil {
 		return nil, err
@@ -103,6 +91,13 @@ func (w *WebtunnelClient) Start() {
 }
 
 func (w *WebtunnelClient) Stop() error {
+	err := w.wsconn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+	if err != nil {
+		return err
+	}
+	// Wait for some time for server to terminate conn before closing on client end.
+	// Otherwise its seen as a abnormal closure and will result in error.
+	time.Sleep(time.Second)
 	w.wsconn.Close()
 	return nil
 }
@@ -111,8 +106,10 @@ func (w *WebtunnelClient) ProcessWSPacket() {
 	for {
 		mt, pkt, err := w.wsconn.ReadMessage()
 		if err != nil {
-			glog.Warningf("Error reading websocket %s", err)
-			continue
+			if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
+				return
+			}
+			glog.Fatalf("error reading websocket %s", err)
 		}
 		if mt != websocket.BinaryMessage {
 			glog.Warningf("Binary message type recvd from websocket")
@@ -120,8 +117,7 @@ func (w *WebtunnelClient) ProcessWSPacket() {
 		}
 		webtunnelcommon.PrintPacketIPv4(pkt, "Client <- WebSocket")
 		if _, err := w.daemonConn.Write(pkt); err != nil {
-			glog.Warningf("Error writing to net daemon %s", err)
-			continue
+			glog.Fatalf("error writing to daemon %s", err)
 		}
 	}
 }
@@ -130,13 +126,14 @@ func (w *WebtunnelClient) ProcessNetPacket() {
 	pkt := make([]byte, 2048)
 	for {
 		if _, err := w.daemonConn.Read(pkt); err != nil {
-			glog.Warningf("error reading daemon %s", err)
-			continue
+			glog.Fatalf("error reading daemon %s", err)
 		}
 		webtunnelcommon.PrintPacketIPv4(pkt, "Client <- NetDaemon")
 		if err := w.wsconn.WriteMessage(websocket.BinaryMessage, pkt); err != nil {
-			glog.Warningf("error writing to websocket: %s", err)
-			continue
+			if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
+				return
+			}
+			glog.Fatalf("error writing to websocket: %s", err)
 		}
 	}
 }
