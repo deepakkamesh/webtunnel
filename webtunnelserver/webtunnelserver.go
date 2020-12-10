@@ -166,11 +166,11 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 			}
 
 		case websocket.BinaryMessage: // Packet message.
+			webtunnelcommon.PrintPacketIPv4(message, "Server <- Websocket")
 			if err := sendNet(message, r.ifce); err != nil {
 				glog.Warningf("error writing to tunnel %s", err)
 				return
 			}
-			webtunnelcommon.PrintPacketIPv4(message, "Server <- Websocket")
 		}
 	}
 }
