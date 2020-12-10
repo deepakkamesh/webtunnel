@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/rpc"
 	"net/url"
+	"time"
 
 	"github.com/deepakkamesh/webtunnel/webtunnelcommon"
 	"github.com/golang/glog"
@@ -28,6 +29,18 @@ func NewWebtunnelClient(DiagLevel int, serverIPPort string, wsDialer *websocket.
 	if err != nil {
 		return nil, err
 	}
+
+	// set pong.
+	wsconn.SetPongHandler(func(data string) error {
+		return nil
+	})
+	ticker := time.NewTicker(5 * time.Second)
+	go func() {
+		for {
+			<-ticker.C
+			wsconn.WriteControl(websocket.PingMessage, []byte("hello server"), time.Now().Add(10*time.Second))
+		}
+	}()
 
 	conn, err := net.Dial("udp", fmt.Sprintf("127.0.0.1:%d", daemonPort))
 	if err != nil {
