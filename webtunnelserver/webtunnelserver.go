@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"time"
 
 	"github.com/deepakkamesh/webtunnel/webtunnelcommon"
 	"github.com/golang/glog"
@@ -98,7 +97,7 @@ func (r *WebTunnelServer) processTUNPacket() {
 		ip, _ := packet.Layer(layers.LayerTypeIPv4).(*layers.IPv4)
 		data, err := r.ipam.GetData(ip.DstIP.String())
 		if err != nil {
-			glog.Warningf("unsolicited packet from IP:%v", ip.DstIP.String())
+			glog.Warningf("unsolicited packet for IP:%v", ip.DstIP.String())
 			continue
 		}
 
@@ -122,8 +121,6 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 	}
 	defer conn.Close()
 
-	glog.Infof("new connection from %v", conn.LocalAddr().String())
-
 	// Get IP and add to ip management.
 	ip, err := r.ipam.AcquireIP(conn)
 	if err != nil {
@@ -131,28 +128,23 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 		return
 	}
 
-	// Set ping handler.
-	conn.SetPingHandler(func(data string) error {
-		return nil
-	})
-	ticker := time.NewTicker(5 * time.Second)
-	go func() {
-		for {
-			<-ticker.C
-			conn.WriteControl(websocket.PongMessage, []byte("hello client"), time.Now().Add(10*time.Second))
-		}
-	}()
+	glog.Infof("new connection from %s", ip)
 
 	// Process websocket packet.
 	for {
 		mt, message, err := conn.ReadMessage()
 		if err != nil {
+			r.ipam.ReleaseIP(ip)
+			if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
+				glog.Infof("connection closed for %s", ip)
+				return
+			}
 			glog.Warningf("error reading from websocket for %s: %s ", rcv.RemoteAddr, err)
 			return
 		}
 
 		switch mt {
-		case websocket.TextMessage: // Control message.
+		case websocket.TextMessage: // Config message.
 			if string(message) == "getConfig" {
 				cfg := &webtunnelcommon.ClientConfig{
 					Ip:          ip,
@@ -167,7 +159,7 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 
 		case websocket.BinaryMessage: // Packet message.
 			webtunnelcommon.PrintPacketIPv4(message, "Server <- Websocket")
-			if err := sendNet(message, r.ifce); err != nil {
+			if _, err := r.ifce.Write(message); err != nil {
 				glog.Warningf("error writing to tunnel %s", err)
 				return
 			}
@@ -181,6 +173,7 @@ func (r *WebTunnelServer) httpEndpoint(w http.ResponseWriter, rcv *http.Request)
 }
 
 // sendNet sends packet on handle interface.
+// TODO: Cleanup function. Not needed since we dont manipulate packet to recalculate checksum.
 func sendNet(pkt []byte, handle *water.Interface) error {
 
 	packet := gopacket.NewPacket(pkt, layers.LayerTypeIPv4, gopacket.Default)
