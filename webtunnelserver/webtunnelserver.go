@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/deepakkamesh/webtunnel/webtunnelcommon"
 	"github.com/golang/glog"
@@ -127,6 +128,18 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 		glog.Errorf("error acquiring IP:%v", err)
 		return
 	}
+
+	// Set ping handler.
+	conn.SetPingHandler(func(data string) error {
+		return nil
+	})
+	ticker := time.NewTicker(5 * time.Second)
+	go func() {
+		for {
+			<-ticker.C
+			conn.WriteControl(websocket.PongMessage, []byte("hello client"), time.Now().Add(10*time.Second))
+		}
+	}()
 
 	// Process websocket packet.
 	for {
