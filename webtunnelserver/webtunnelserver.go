@@ -122,6 +122,8 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 	}
 	defer conn.Close()
 
+	glog.Infof("new connection from %v", conn.LocalAddr().String())
+
 	// Get IP and add to ip management.
 	ip, err := r.ipam.AcquireIP(conn)
 	if err != nil {
@@ -148,7 +150,6 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 			glog.Warningf("error reading from websocket for %s: %s ", rcv.RemoteAddr, err)
 			return
 		}
-		webtunnelcommon.PrintPacketIPv4(message, "Server <- Websocket")
 
 		switch mt {
 		case websocket.TextMessage: // Control message.
@@ -169,6 +170,7 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 				glog.Warningf("error writing to tunnel %s", err)
 				return
 			}
+			webtunnelcommon.PrintPacketIPv4(message, "Server <- Websocket")
 		}
 	}
 }
