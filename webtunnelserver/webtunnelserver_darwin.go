@@ -1,5 +1,7 @@
 package webtunnelserver
 
+import "fmt"
+
 func initializeTunnel(ifceName, tunIP, tunNetmask string) error {
-	return nil
+	return fmt.Errorf("not implemented")
 }
