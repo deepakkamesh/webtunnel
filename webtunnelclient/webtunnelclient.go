@@ -21,7 +21,7 @@ type WebtunnelClient struct {
 	clientDaemonPort int             // Port number of Client Daemon.
 }
 
-func NewWebtunnelClient(DiagLevel int, serverIPPort string, wsDialer *websocket.Dialer, daemonPort int) (*WebtunnelClient, error) {
+func NewWebtunnelClient(serverIPPort string, wsDialer *websocket.Dialer, daemonPort int) (*WebtunnelClient, error) {
 
 	// Initialize websocket connection.
 	u := url.URL{Scheme: "wss", Host: serverIPPort, Path: "/ws"}
@@ -30,6 +30,7 @@ func NewWebtunnelClient(DiagLevel int, serverIPPort string, wsDialer *websocket.
 		return nil, err
 	}
 
+	// Connect and initialize Daemon.
 	conn, err := net.Dial("udp", fmt.Sprintf("127.0.0.1:%d", daemonPort))
 	if err != nil {
 		return nil, err

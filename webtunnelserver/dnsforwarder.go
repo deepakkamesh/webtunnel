@@ -132,11 +132,11 @@ func (d *DNSForwarder) sendResponse(req *layers.DNS, peerAddr net.Addr, ips []st
 	buff := gopacket.NewSerializeBuffer()
 	opts := gopacket.SerializeOptions{FixLengths: true, ComputeChecksums: true}
 	if err := dns.SerializeTo(buff, opts); err != nil {
-		return fmt.Errorf("Error serializing DNS response %v", err)
+		return fmt.Errorf("error serializing DNS response %v", err)
 	}
 
 	if _, err := d.handle.WriteTo(buff.Bytes(), peerAddr); err != nil {
-		return fmt.Errorf("Error writing response to interface %v", err)
+		return fmt.Errorf("error writing response to interface %v", err)
 	}
 
 	return nil
