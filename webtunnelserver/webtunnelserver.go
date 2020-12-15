@@ -23,7 +23,7 @@ type WebTunnelServer struct {
 	ifce             *water.Interface           // Tunnel interface handle.
 	quitTUNProcessor chan struct{}              // Channel to get shutdown message.
 	Conns            map[string]*websocket.Conn // Websocket connection.
-	routePrefix      string                     // Route prefix for client config.
+	routePrefix      []string                   // Route prefix for client config.
 	clientNetPrefix  string                     // IP range for clients.
 	gwIP             string                     // Tunnel IP address of server.
 	ipam             *IPPam                     // Client IP Address manager.
@@ -31,7 +31,7 @@ type WebTunnelServer struct {
 	httpsCertFile    string                     // Cert file for HTTPS.
 }
 
-func NewWebTunnelServer(serverIPPort, gwIP, tunNetmask, clientNetPrefix, routePrefix, httpsKeyFile, httpsCertFile string) (*WebTunnelServer, error) {
+func NewWebTunnelServer(serverIPPort, gwIP, tunNetmask, clientNetPrefix string, routePrefix []string, httpsKeyFile string, httpsCertFile string) (*WebTunnelServer, error) {
 
 	// Create TUN interface and initialize it.
 	ifce, err := water.New(

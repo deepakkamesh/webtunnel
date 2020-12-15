@@ -50,6 +50,14 @@ func (i *NetIfce) SetRemote(addr *net.UDPAddr, r *struct{}) error {
 	return nil
 }
 
+func (i *NetIfce) SetDNS(dnsServer string, r *struct{}) error {
+	return nil
+}
+
+func (i *NetIfce) Bye(s string, r *struct{}) error {
+	return nil
+}
+
 // ClientDaemon represents a daemon structure.
 type ClientDaemon struct {
 	DaemonPort int

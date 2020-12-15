@@ -8,7 +8,6 @@ import (
 	"syscall"
 
 	"github.com/deepakkamesh/webtunnel/webtunnelclient"
-	"github.com/deepakkamesh/webtunnel/webtunnelcommon"
 	"github.com/golang/glog"
 	"github.com/gorilla/websocket"
 )
@@ -24,7 +23,7 @@ func main() {
 	wsDialer := websocket.Dialer{}
 	wsDialer.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 
-	client, err := webtunnelclient.NewWebtunnelClient(webtunnelcommon.DiagLevelDebug, "192.168.1.117:8811", &wsDialer, daemonPort)
+	client, err := webtunnelclient.NewWebtunnelClient("192.168.1.117:8811", &wsDialer, daemonPort)
 	if err != nil {
 		glog.Fatalf("Failed to initialize client: %s", err)
 	}

@@ -73,9 +73,10 @@ func setClientDaemonCfg(conn *websocket.Conn, daemonPort int, addr net.Addr) err
 	if err := client.Call("NetIfce.SetIP", args, &struct{}{}); err != nil {
 		return err
 	}
-
-	if err := client.Call("NetIfce.SetRoute", cfg.RoutePrefix, &struct{}{}); err != nil {
-		return err
+	for _, r := range cfg.RoutePrefix {
+		if err := client.Call("NetIfce.SetRoute", r, &struct{}{}); err != nil {
+			return err
+		}
 	}
 
 	if err := client.Call("NetIfce.SetRemote", addr, &struct{}{}); err != nil {
