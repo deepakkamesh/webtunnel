@@ -36,7 +36,7 @@ func NewWebtunnelClient(serverIPPort string, wsDialer *websocket.Dialer, daemonP
 	if err != nil {
 		return nil, err
 	}
-	// Connect and initialize Daemon.
+	// Establish conn. to clientDaemon for packet processing.
 	conn, err := net.Dial("udp", fmt.Sprintf("127.0.0.1:%d", daemonPort))
 	if err != nil {
 		return nil, err
@@ -49,6 +49,19 @@ func NewWebtunnelClient(serverIPPort string, wsDialer *websocket.Dialer, daemonP
 		Error:         make(chan error),
 		daemonRPCConn: client,
 	}, nil
+}
+
+func (w *WebtunnelClient) Start() error {
+
+	err := w.setClientDaemonCfg()
+	if err != nil {
+		return err
+	}
+	go w.processNetPacket()
+	go w.processWSPacket()
+	go w.checkDaemonHealth()
+
+	return nil
 }
 
 // setClientDaemonCfg retrieves the client configuration from server and sends to Net daemon.
@@ -85,21 +98,8 @@ func (w *WebtunnelClient) setClientDaemonCfg() error {
 	return nil
 }
 
-func (w *WebtunnelClient) Start() error {
-
-	err := w.setClientDaemonCfg()
-	if err != nil {
-		return err
-	}
-	go w.processNetPacket()
-	go w.processWSPacket()
-	go w.CheckDaemonHealth()
-
-	return nil
-}
-
 // CheckDaemonHealth pings the daemon and returns error if unreachable.
-func (w *WebtunnelClient) CheckDaemonHealth() {
+func (w *WebtunnelClient) checkDaemonHealth() {
 	t := time.NewTicker(5 * time.Second)
 	for {
 		<-t.C
