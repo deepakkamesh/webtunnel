@@ -16,9 +16,10 @@ import (
 )
 
 type WebtunnelClient struct {
-	wsconn           *websocket.Conn // Websocket connection.
-	daemonConn       net.Conn        // Daemon UDP Interface.
-	clientDaemonPort int             // Port number of Client Daemon.
+	wsconn        *websocket.Conn // Websocket connection.
+	daemonUDPConn net.Conn        // Daemon UDP Interface.
+	Error         chan error      // Channel to handle errors from goroutines.
+	daemonRPCConn *rpc.Client     // Handle to Daemon's RPC interface.
 }
 
 func NewWebtunnelClient(serverIPPort string, wsDialer *websocket.Dialer, daemonPort int) (*WebtunnelClient, error) {
@@ -30,56 +31,53 @@ func NewWebtunnelClient(serverIPPort string, wsDialer *websocket.Dialer, daemonP
 		return nil, err
 	}
 
+	// Establish conn. to clientDaemon RPC for configuration.
+	client, err := rpc.DialHTTP("tcp", fmt.Sprintf("127.0.0.1:%d", daemonPort))
+	if err != nil {
+		return nil, err
+	}
 	// Connect and initialize Daemon.
 	conn, err := net.Dial("udp", fmt.Sprintf("127.0.0.1:%d", daemonPort))
 	if err != nil {
 		return nil, err
 	}
-	glog.V(1).Info("Connected to Daemon")
-
-	err = setClientDaemonCfg(wsconn, daemonPort, conn.LocalAddr())
-	if err != nil {
-		return nil, err
-	}
+	glog.V(1).Info("Connected to ClientDaemon.")
 
 	return &WebtunnelClient{
-		wsconn:     wsconn,
-		daemonConn: conn,
+		wsconn:        wsconn,
+		daemonUDPConn: conn,
+		Error:         make(chan error),
+		daemonRPCConn: client,
 	}, nil
 }
 
 // setClientDaemonCfg retrieves the client configuration from server and sends to Net daemon.
-func setClientDaemonCfg(conn *websocket.Conn, daemonPort int, addr net.Addr) error {
+func (w *WebtunnelClient) setClientDaemonCfg() error {
 	// Get configuration from server.
-	if err := conn.WriteMessage(websocket.TextMessage, []byte("getConfig")); err != nil {
+	if err := w.wsconn.WriteMessage(websocket.TextMessage, []byte("getConfig")); err != nil {
 		return err
 	}
 	cfg := &webtunnelcommon.ClientConfig{}
-	if err := conn.ReadJSON(cfg); err != nil {
+	if err := w.wsconn.ReadJSON(cfg); err != nil {
 		return err
 	}
-	glog.V(1).Infof("Got config from server %v", *cfg)
+	glog.V(1).Infof("Retrieved config from server %v", *cfg)
 
 	// Send configuration to clientDaemon.
 	args := SetIPArgs{
 		IP:   cfg.Ip,
 		GWIP: cfg.GWIp,
 	}
-	client, err := rpc.DialHTTP("tcp", fmt.Sprintf("127.0.0.1:%d", daemonPort))
-	if err != nil {
-		return err
-	}
-	defer client.Close()
-	if err := client.Call("NetIfce.SetIP", args, &struct{}{}); err != nil {
+
+	if err := w.daemonRPCConn.Call("NetIfce.SetIP", args, &struct{}{}); err != nil {
 		return err
 	}
 	for _, r := range cfg.RoutePrefix {
-		if err := client.Call("NetIfce.SetRoute", r, &struct{}{}); err != nil {
+		if err := w.daemonRPCConn.Call("NetIfce.SetRoute", r, &struct{}{}); err != nil {
 			return err
 		}
 	}
-
-	if err := client.Call("NetIfce.SetRemote", addr, &struct{}{}); err != nil {
+	if err := w.daemonRPCConn.Call("NetIfce.SetRemote", w.daemonUDPConn.LocalAddr(), &struct{}{}); err != nil {
 		return err
 	}
 
@@ -87,9 +85,29 @@ func setClientDaemonCfg(conn *websocket.Conn, daemonPort int, addr net.Addr) err
 	return nil
 }
 
-func (w *WebtunnelClient) Start() {
-	go w.ProcessNetPacket()
-	go w.ProcessWSPacket()
+func (w *WebtunnelClient) Start() error {
+
+	err := w.setClientDaemonCfg()
+	if err != nil {
+		return err
+	}
+	go w.processNetPacket()
+	go w.processWSPacket()
+	go w.CheckDaemonHealth()
+
+	return nil
+}
+
+// CheckDaemonHealth pings the daemon and returns error if unreachable.
+func (w *WebtunnelClient) CheckDaemonHealth() {
+	t := time.NewTicker(5 * time.Second)
+	for {
+		<-t.C
+		if err := w.daemonRPCConn.Call("NetIfce.Ping", "hello", &struct{}{}); err != nil {
+			w.Error <- fmt.Errorf("failed to reach Daemon %s. Try daemon restart", err)
+			return
+		}
+	}
 }
 
 func (w *WebtunnelClient) Stop() error {
@@ -104,38 +122,42 @@ func (w *WebtunnelClient) Stop() error {
 	return nil
 }
 
-func (w *WebtunnelClient) ProcessWSPacket() {
+func (w *WebtunnelClient) processWSPacket() {
 	for {
 		mt, pkt, err := w.wsconn.ReadMessage()
 		if err != nil {
 			if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
 				return
 			}
-			glog.Fatalf("error reading websocket %s", err)
+			w.Error <- fmt.Errorf("error reading websocket %s", err)
+			return
 		}
 		if mt != websocket.BinaryMessage {
 			glog.Warningf("Binary message type recvd from websocket")
 			continue
 		}
 		webtunnelcommon.PrintPacketIPv4(pkt, "Client <- WebSocket")
-		if _, err := w.daemonConn.Write(pkt); err != nil {
-			glog.Fatalf("error writing to daemon %s", err)
+		if _, err := w.daemonUDPConn.Write(pkt); err != nil {
+			w.Error <- fmt.Errorf("error writing to daemon %s", err)
+			return
 		}
 	}
 }
 
-func (w *WebtunnelClient) ProcessNetPacket() {
+func (w *WebtunnelClient) processNetPacket() {
 	pkt := make([]byte, 2048)
 	for {
-		if _, err := w.daemonConn.Read(pkt); err != nil {
-			glog.Fatalf("error reading daemon %s", err)
+		if _, err := w.daemonUDPConn.Read(pkt); err != nil {
+			w.Error <- fmt.Errorf("error reading daemon %s", err)
+			return
 		}
 		webtunnelcommon.PrintPacketIPv4(pkt, "Client <- NetDaemon")
 		if err := w.wsconn.WriteMessage(websocket.BinaryMessage, pkt); err != nil {
 			if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
 				return
 			}
-			glog.Fatalf("error writing to websocket: %s", err)
+			w.Error <- fmt.Errorf("error writing to websocket: %s", err)
+			return
 		}
 	}
 }

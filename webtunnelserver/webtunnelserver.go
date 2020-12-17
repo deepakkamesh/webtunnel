@@ -19,16 +19,16 @@ var upgrader = websocket.Upgrader{
 }
 
 type WebTunnelServer struct {
-	serverIPPort     string                     // IP Port for binding on server.
-	ifce             *water.Interface           // Tunnel interface handle.
-	quitTUNProcessor chan struct{}              // Channel to get shutdown message.
-	Conns            map[string]*websocket.Conn // Websocket connection.
-	routePrefix      []string                   // Route prefix for client config.
-	clientNetPrefix  string                     // IP range for clients.
-	gwIP             string                     // Tunnel IP address of server.
-	ipam             *IPPam                     // Client IP Address manager.
-	httpsKeyFile     string                     // Key file for HTTPS.
-	httpsCertFile    string                     // Cert file for HTTPS.
+	serverIPPort    string                     // IP Port for binding on server.
+	ifce            *water.Interface           // Tunnel interface handle.
+	Conns           map[string]*websocket.Conn // Websocket connection.
+	routePrefix     []string                   // Route prefix for client config.
+	clientNetPrefix string                     // IP range for clients.
+	gwIP            string                     // Tunnel IP address of server.
+	ipam            *IPPam                     // Client IP Address manager.
+	httpsKeyFile    string                     // Key file for HTTPS.
+	httpsCertFile   string                     // Cert file for HTTPS.
+	Error           chan error                 // Channel to handle error from goroutine.
 }
 
 func NewWebTunnelServer(serverIPPort, gwIP, tunNetmask, clientNetPrefix string, routePrefix []string, httpsKeyFile string, httpsCertFile string) (*WebTunnelServer, error) {
@@ -54,16 +54,16 @@ func NewWebTunnelServer(serverIPPort, gwIP, tunNetmask, clientNetPrefix string, 
 		return nil, err
 	}
 	return &WebTunnelServer{
-		serverIPPort:     serverIPPort,
-		ifce:             ifce,
-		quitTUNProcessor: make(chan struct{}),
-		Conns:            make(map[string]*websocket.Conn),
-		routePrefix:      routePrefix,
-		clientNetPrefix:  clientNetPrefix,
-		gwIP:             gwIP,
-		ipam:             ipam,
-		httpsKeyFile:     httpsKeyFile,
-		httpsCertFile:    httpsCertFile,
+		serverIPPort:    serverIPPort,
+		ifce:            ifce,
+		Conns:           make(map[string]*websocket.Conn),
+		routePrefix:     routePrefix,
+		clientNetPrefix: clientNetPrefix,
+		gwIP:            gwIP,
+		ipam:            ipam,
+		httpsKeyFile:    httpsKeyFile,
+		httpsCertFile:   httpsCertFile,
+		Error:           make(chan error),
 	}, nil
 }
 
@@ -79,17 +79,17 @@ func (r *WebTunnelServer) Start() {
 }
 
 func (r *WebTunnelServer) Stop() {
-	r.quitTUNProcessor <- struct{}{}
 }
 
 // processTUNPacket processes the packets read from tunnel.
 func (r *WebTunnelServer) processTUNPacket() {
-
+	defer func() { r.Error <- nil }()
 	pkt := make([]byte, 2048)
+
 	for {
 		if _, err := r.ifce.Read(pkt); err != nil {
-			glog.Warningf("error reading from tunnel %s", err)
-			continue
+			r.Error <- fmt.Errorf("error reading from tunnel %s", err)
+			return
 		}
 
 		// Get dst IP and corresponding websocket connection.
@@ -124,11 +124,11 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 	// Get IP and add to ip management.
 	ip, err := r.ipam.AcquireIP(conn)
 	if err != nil {
-		glog.Errorf("error acquiring IP:%v", err)
+		glog.Errorf("Error acquiring IP:%v", err)
 		return
 	}
 
-	glog.Infof("new connection from %s", ip)
+	glog.Infof("New connection from %s", ip)
 
 	// Process websocket packet.
 	for {
@@ -152,7 +152,7 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 					GWIp:        r.gwIP,
 				}
 				if err := conn.WriteJSON(cfg); err != nil {
-					glog.Errorf("error sending config to client: %v", err)
+					glog.Warningf("error sending config to client: %v", err)
 					return
 				}
 			}
@@ -160,7 +160,7 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 		case websocket.BinaryMessage: // Packet message.
 			webtunnelcommon.PrintPacketIPv4(message, "Server <- Websocket")
 			if _, err := r.ifce.Write(message); err != nil {
-				glog.Warningf("error writing to tunnel %s", err)
+				r.Error <- fmt.Errorf("error writing to tunnel %s", err)
 				return
 			}
 		}
@@ -170,49 +170,4 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 // httpEndpoint defines the HTTP / Path. The "Sender" will send an initial request to this URL.
 func (r *WebTunnelServer) httpEndpoint(w http.ResponseWriter, rcv *http.Request) {
 	fmt.Fprint(w, "OK")
-}
-
-// sendNet sends packet on handle interface.
-// TODO: Cleanup function. Not needed since we dont manipulate packet to recalculate checksum.
-func sendNet(pkt []byte, handle *water.Interface) error {
-
-	packet := gopacket.NewPacket(pkt, layers.LayerTypeIPv4, gopacket.Default)
-
-	ip, _ := packet.Layer(layers.LayerTypeIPv4).(*layers.IPv4)
-
-	opts := gopacket.SerializeOptions{FixLengths: true, ComputeChecksums: true}
-
-	buffer := gopacket.NewSerializeBuffer()
-
-	switch ip.NextLayerType() {
-	case layers.LayerTypeUDP:
-		trans := packet.Layer(layers.LayerTypeUDP).(*layers.UDP)
-		if err := trans.SetNetworkLayerForChecksum(ip); err != nil {
-			return fmt.Errorf("error checksum %s", err)
-		}
-		if err := gopacket.SerializeLayers(buffer, opts, ip, trans, gopacket.Payload(trans.Payload)); err != nil {
-			return fmt.Errorf("error serializelayer %s", err)
-		}
-
-	case layers.LayerTypeTCP:
-		trans := packet.Layer(layers.LayerTypeTCP).(*layers.TCP)
-		if err := trans.SetNetworkLayerForChecksum(ip); err != nil {
-			return fmt.Errorf("error checksum %s", err)
-		}
-
-		trans.SetNetworkLayerForChecksum(ip)
-		if err := gopacket.SerializeLayers(buffer, opts, ip, trans, gopacket.Payload(trans.Payload)); err != nil {
-			return fmt.Errorf("error serializelayer %s", err)
-		}
-
-	case layers.LayerTypeICMPv4:
-		trans := packet.Layer(layers.LayerTypeICMPv4).(*layers.ICMPv4)
-		if err := gopacket.SerializeLayers(buffer, opts, ip, trans, gopacket.Payload(trans.Payload)); err != nil {
-			return fmt.Errorf("error serializelayer %s", err)
-		}
-	}
-	if _, err := handle.Write(buffer.Bytes()); err != nil {
-		return fmt.Errorf("error sending to tun %s", err)
-	}
-	return nil
 }

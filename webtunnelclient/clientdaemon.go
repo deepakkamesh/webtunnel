@@ -45,7 +45,7 @@ func (i *NetIfce) SetRoute(routePrefix string, r *struct{}) error {
 }
 
 func (i *NetIfce) SetRemote(addr *net.UDPAddr, r *struct{}) error {
-	glog.V(1).Infof("New remote endpoint connected: %s", addr.String())
+	glog.Infof("New remote endpoint connected: %s", addr.String())
 	i.RemoteAddr = addr
 	return nil
 }
@@ -58,11 +58,17 @@ func (i *NetIfce) Bye(s string, r *struct{}) error {
 	return nil
 }
 
+// Ping function is called from Client to check health of Daemon.
+func (i *NetIfce) Ping(s string, r *struct{}) error {
+	return nil
+}
+
 // ClientDaemon represents a daemon structure.
 type ClientDaemon struct {
-	DaemonPort int
-	NetIfce    *NetIfce
-	pktConn    *net.UDPConn
+	DaemonPort int          // Daemon IPPort.
+	NetIfce    *NetIfce     // Handle to tunnel network interface.
+	pktConn    *net.UDPConn // Handle to UDP connection.
+	Error      chan error   // Channel to handle errors from goroutines.
 }
 
 // NewClientDaemon returns an initialized Client Daemon.
@@ -83,6 +89,7 @@ func NewClientDaemon(daemonPort int, diagLevel int) (*ClientDaemon, error) {
 		DaemonPort: daemonPort,
 		NetIfce:    netIfce,
 		pktConn:    ser,
+		Error:      make(chan error),
 	}, nil
 }
 
@@ -114,26 +121,32 @@ func (c *ClientDaemon) Stop() error {
 
 func (c *ClientDaemon) processNetPkt() {
 	pkt := make([]byte, 2048)
+
 	for {
 		if _, _, err := c.pktConn.ReadFrom(pkt); err != nil {
-			glog.Fatalf("Error reading udp %s", err)
+			c.Error <- fmt.Errorf("error reading udp %s.", err)
+			return
 		}
 		webtunnelcommon.PrintPacketIPv4(pkt, "Daemon <- Client")
 		if _, err := c.NetIfce.handle.Write(pkt); err != nil {
-			glog.Fatalf("Error writing to tunnel %s", err)
+			c.Error <- fmt.Errorf("error writing to tunnel %s.", err)
+			return
 		}
 	}
 }
 
 func (c *ClientDaemon) processTUNPkt() {
 	pkt := make([]byte, 2048)
+
 	for {
 		if _, err := c.NetIfce.handle.Read(pkt); err != nil {
-			glog.Fatalf("Error reading tunnel %s", err)
+			c.Error <- fmt.Errorf("error reading tunnel %s.", err)
+			return
 		}
 		webtunnelcommon.PrintPacketIPv4(pkt, "Daemon -> Client")
 		if _, err := c.pktConn.WriteTo(pkt, c.NetIfce.RemoteAddr); err != nil {
-			glog.Fatalf("Error writing to websocket: %s", err)
+			c.Error <- fmt.Errorf("error writing to websocket: %s.", err)
+			return
 		}
 	}
 }

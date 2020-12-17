@@ -25,11 +25,15 @@ func main() {
 
 	client, err := webtunnelclient.NewWebtunnelClient("192.168.1.117:8811", &wsDialer, daemonPort)
 	if err != nil {
-		glog.Fatalf("Failed to initialize client: %s", err)
+		glog.Exitf("Failed to initialize client: %s", err)
 	}
 	client.Start()
 
-	<-c
-	glog.Infoln("Shutting down WebTunnel")
-	client.Stop()
+	select {
+	case <-c:
+		client.Stop()
+		glog.Infoln("Shutting down WebTunnel")
+	case err := <-client.Error:
+		glog.Exitf("Client failure: %s", err)
+	}
 }

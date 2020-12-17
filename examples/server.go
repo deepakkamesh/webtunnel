@@ -31,6 +31,8 @@ func main() {
 	}
 	dns.Start()
 
-	for {
+	select {
+	case err := <-server.Error:
+		glog.Exitf("Shutting down server %v", err)
 	}
 }
