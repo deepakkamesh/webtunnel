@@ -78,6 +78,7 @@ func NewClientDaemon(daemonPort int, diagLevel int) (*ClientDaemon, error) {
 	if err != nil {
 		return nil, err
 	}
+	glog.V(1).Infof("Created interface %s", netIfce.handle.Name())
 
 	// Start UDP listener for packet messages.
 	ser, err := net.ListenUDP("udp", &net.UDPAddr{Port: daemonPort, IP: net.ParseIP("127.0.0.1")})
@@ -137,8 +138,11 @@ func (c *ClientDaemon) processNetPkt() {
 
 func (c *ClientDaemon) processTUNPkt() {
 	pkt := make([]byte, 2048)
-
+	// If Daemon is not configured do not process packets.
 	for {
+		if c.NetIfce.RemoteAddr == nil {
+			continue
+		}
 		if _, err := c.NetIfce.handle.Read(pkt); err != nil {
 			c.Error <- fmt.Errorf("error reading tunnel %s.", err)
 			return
