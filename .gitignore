@@ -1,5 +1,5 @@
 client
 server
 clientDaemon
-push_server.sh
+push_*.sh
 *.swp
