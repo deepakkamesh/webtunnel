@@ -16,9 +16,11 @@ func main() {
 	flag.Parse()
 
 	routePrefix := []string{"172.16.0.1/32", "172.16.0.2/32"}
+	dnsIPs := []string{"8.8.8.8", "1.1.1."}
+
 	glog.Info("starting webtunnel server..")
 	server, err := webtunnelserver.NewWebTunnelServer(*listenAddr, "192.168.0.1",
-		"255.255.255.0", "192.168.0.0/24", routePrefix, *httpsKeyFile, *httpsCertFile)
+		"255.255.255.0", "192.168.0.0/24", dnsIPs, routePrefix, *httpsKeyFile, *httpsCertFile)
 	if err != nil {
 		glog.Fatalf("%s", err)
 	}

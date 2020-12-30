@@ -23,15 +23,17 @@ type WebTunnelServer struct {
 	ifce            *water.Interface           // Tunnel interface handle.
 	Conns           map[string]*websocket.Conn // Websocket connection.
 	routePrefix     []string                   // Route prefix for client config.
+	tunNetmask      string                     // Netmask for clients.
 	clientNetPrefix string                     // IP range for clients.
 	gwIP            string                     // Tunnel IP address of server.
 	ipam            *IPPam                     // Client IP Address manager.
 	httpsKeyFile    string                     // Key file for HTTPS.
 	httpsCertFile   string                     // Cert file for HTTPS.
 	Error           chan error                 // Channel to handle error from goroutine.
+	dnsIPs          []string                   // DNS server IPs.
 }
 
-func NewWebTunnelServer(serverIPPort, gwIP, tunNetmask, clientNetPrefix string, routePrefix []string, httpsKeyFile string, httpsCertFile string) (*WebTunnelServer, error) {
+func NewWebTunnelServer(serverIPPort, gwIP, tunNetmask, clientNetPrefix string, dnsIPs []string, routePrefix []string, httpsKeyFile string, httpsCertFile string) (*WebTunnelServer, error) {
 
 	// Create TUN interface and initialize it.
 	ifce, err := water.New(
@@ -58,12 +60,14 @@ func NewWebTunnelServer(serverIPPort, gwIP, tunNetmask, clientNetPrefix string, 
 		ifce:            ifce,
 		Conns:           make(map[string]*websocket.Conn),
 		routePrefix:     routePrefix,
+		tunNetmask:      tunNetmask,
 		clientNetPrefix: clientNetPrefix,
 		gwIP:            gwIP,
 		ipam:            ipam,
 		httpsKeyFile:    httpsKeyFile,
 		httpsCertFile:   httpsCertFile,
 		Error:           make(chan error),
+		dnsIPs:          dnsIPs,
 	}, nil
 }
 
@@ -148,8 +152,10 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 			if string(message) == "getConfig" {
 				cfg := &webtunnelcommon.ClientConfig{
 					Ip:          ip,
+					Netmask:     r.tunNetmask,
 					RoutePrefix: r.routePrefix,
 					GWIp:        r.gwIP,
+					DNS:         r.dnsIPs,
 				}
 				if err := conn.WriteJSON(cfg); err != nil {
 					glog.Warningf("error sending config to client: %v", err)
