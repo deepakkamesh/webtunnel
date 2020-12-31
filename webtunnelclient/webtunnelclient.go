@@ -77,19 +77,18 @@ func (w *WebtunnelClient) setClientDaemonCfg() error {
 	glog.V(1).Infof("Retrieved config from server %v", *cfg)
 
 	// Send configuration to clientDaemon.
-	args := SetIPArgs{
-		IP:   cfg.Ip,
-		GWIP: cfg.GWIp,
+	args := InterfaceCfg{
+		IP:          cfg.Ip,
+		GWIP:        cfg.GWIp,
+		Netmask:     cfg.Netmask,
+		DNS:         cfg.DNS,
+		RoutePrefix: cfg.RoutePrefix,
 	}
 
-	if err := w.daemonRPCConn.Call("NetIfce.SetIP", args, &struct{}{}); err != nil {
+	if err := w.daemonRPCConn.Call("NetIfce.SetInterfaceCfg", args, &struct{}{}); err != nil {
 		return err
 	}
-	for _, r := range cfg.RoutePrefix {
-		if err := w.daemonRPCConn.Call("NetIfce.SetRoute", r, &struct{}{}); err != nil {
-			return err
-		}
-	}
+
 	if err := w.daemonRPCConn.Call("NetIfce.SetRemote", w.daemonUDPConn.LocalAddr(), &struct{}{}); err != nil {
 		return err
 	}
