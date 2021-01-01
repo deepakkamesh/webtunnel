@@ -1,5 +1,7 @@
 client
 server
 clientDaemon
+clientDaemon.exe
+wintester*
 push_*.sh
 *.swp
