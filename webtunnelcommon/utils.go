@@ -1,6 +1,9 @@
 package webtunnelcommon
 
 import (
+	"crypto/rand"
+	"net"
+
 	"github.com/golang/glog"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
@@ -31,4 +34,26 @@ func PrintPacketEth(pkt []byte, tag string) {
 	if _, ok := packet.Layer(layers.LayerTypeEthernet).(*layers.Ethernet); ok {
 		glog.V(2).Infof("%s: %v", tag, packet)
 	}
+}
+
+func GetMacbyName(name string) net.HardwareAddr {
+	ints, err := net.Interfaces()
+	if err != nil {
+		return nil
+	}
+	for _, i := range ints {
+		if i.Name == name {
+			return i.HardwareAddr
+		}
+	}
+	return nil
+}
+
+// Generate a random private MAC address for GW server to handle ARP etc.
+func GenMACAddr() []byte {
+	buf := make([]byte, 6)
+	rand.Read(buf)
+	// Set the local bit
+	buf[0] = (buf[0] | 2) & 0xfe
+	return buf
 }

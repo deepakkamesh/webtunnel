@@ -17,7 +17,8 @@ type NetIfce struct {
 	handle       *water.Interface // Handle to interface.
 	RemoteAddr   *net.UDPAddr     // remote IP for client.
 	InterfaceCfg *InterfaceCfg    // Interface Configuration.
-	HardwareAddr net.HardwareAddr // Local Mac Address set if TAP only.
+	localHWAddr  net.HardwareAddr // Local Mac Address set if TAP only.
+	gwHWAddr     net.HardwareAddr // Fake HW addr for Gateway IP. needed since we use TUN at server.
 }
 
 type InterfaceCfg struct {
@@ -36,22 +37,11 @@ func NewNetIfce(devType water.DeviceType) (*NetIfce, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error creating int %s", err)
 	}
-	// Get the mac address if its a TAP interface.
-	var mac net.HardwareAddr
-	if handle.IsTAP() {
-		ints, err := net.Interfaces()
-		if err != nil {
-			return nil, err
-		}
-		for _, i := range ints {
-			if i.Name == handle.Name() {
-				mac = i.HardwareAddr
-			}
-		}
-	}
+
 	return &NetIfce{
-		handle:       handle,
-		HardwareAddr: mac,
+		handle:      handle,
+		localHWAddr: webtunnelcommon.GetMacbyName(handle.Name()),
+		gwHWAddr:    webtunnelcommon.GenMACAddr(),
 	}, nil
 }
 
@@ -131,14 +121,8 @@ func (c *ClientDaemon) Start() error {
 	go http.Serve(h, nil)
 
 	// Start the packet processors.
-	if c.NetIfce.handle.IsTAP() {
-		go c.processNetPktTAP()
-		go c.processTAPPkt()
-	}
-	if c.NetIfce.handle.IsTUN() {
-		go c.processNetPkt()
-		go c.processTUNPkt()
-	}
+	go c.processNetPkt()
+	go c.processTUNTAPPkt()
 
 	return nil
 }
@@ -150,6 +134,7 @@ func (c *ClientDaemon) Stop() error {
 	return c.pktConn.Close()
 }
 
+/*
 func (c *ClientDaemon) processNetPkt() {
 	pkt := make([]byte, 2048)
 
@@ -183,34 +168,39 @@ func (c *ClientDaemon) processTUNPkt() {
 			return
 		}
 	}
-}
-func (c *ClientDaemon) processNetPktTAP() {
+}*/
+func (c *ClientDaemon) processNetPkt() {
 	pkt := make([]byte, 2048)
-
+	var oPkt []byte
 	opts := gopacket.SerializeOptions{FixLengths: true, ComputeChecksums: true}
 
 	for {
-		if _, _, err := c.pktConn.ReadFrom(pkt); err != nil {
-			c.Error <- fmt.Errorf("error reading udp %s.", err)
+		n, _, err := c.pktConn.ReadFrom(pkt)
+		if err != nil {
+			c.Error <- fmt.Errorf("error reading Udp %s. Size:%v", err, n)
 			return
 		}
+		oPkt = pkt
+		webtunnelcommon.PrintPacketIPv4(oPkt, "Daemon <- Client")
 
-		// Wrap packet in Ethernet header before sending.
-		packet := gopacket.NewPacket(pkt, layers.LayerTypeIPv4, gopacket.Default)
-		ipv4 := packet.Layer(layers.LayerTypeIPv4).(*layers.IPv4)
+		// Wrap packet in Ethernet header before sending if TAP.
+		if c.NetIfce.handle.IsTAP() {
+			packet := gopacket.NewPacket(pkt, layers.LayerTypeIPv4, gopacket.Default)
+			ipv4 := packet.Layer(layers.LayerTypeIPv4).(*layers.IPv4)
 
-		ethl := &layers.Ethernet{
-			SrcMAC:       c.NetIfce.HardwareAddr, // src/dst are same.
-			DstMAC:       c.NetIfce.HardwareAddr,
-			EthernetType: layers.EthernetTypeIPv4,
+			ethl := &layers.Ethernet{
+				SrcMAC:       c.NetIfce.gwHWAddr,
+				DstMAC:       c.NetIfce.localHWAddr,
+				EthernetType: layers.EthernetTypeIPv4,
+			}
+			buffer := gopacket.NewSerializeBuffer()
+			if err := gopacket.SerializeLayers(buffer, opts, ethl, ipv4, gopacket.Payload(ipv4.Payload)); err != nil {
+				glog.Errorf("error serializelayer %s", err)
+			}
+			oPkt = buffer.Bytes()
 		}
-		buffer := gopacket.NewSerializeBuffer()
-		if err := gopacket.SerializeLayers(buffer, opts, ethl, ipv4, gopacket.Payload(ipv4.Payload)); err != nil {
-			glog.Errorf("error serializelayer %s", err)
-		}
-
-		webtunnelcommon.PrintPacketEth(buffer.Bytes(), "Daemon <- Client")
-		if _, err := c.NetIfce.handle.Write(buffer.Bytes()); err != nil {
+		// Send packet to network interface.
+		if _, err := c.NetIfce.handle.Write(oPkt); err != nil {
 			c.Error <- fmt.Errorf("error writing to tunnel %s.", err)
 			return
 		}
@@ -218,38 +208,85 @@ func (c *ClientDaemon) processNetPktTAP() {
 }
 
 // processTAPPkt handles TAP interface.
-func (c *ClientDaemon) processTAPPkt() {
+func (c *ClientDaemon) processTUNTAPPkt() {
 	pkt := make([]byte, 2048)
+	var oPkt []byte
+
 	// If Daemon is not configured do not process packets.
 	for {
 		if c.NetIfce.RemoteAddr == nil {
 			continue
 		}
-		if _, err := c.NetIfce.handle.Read(pkt); err != nil {
-			c.Error <- fmt.Errorf("error reading tunnel %s.", err)
+
+		n, err := c.NetIfce.handle.Read(pkt)
+		if err != nil {
+			c.Error <- fmt.Errorf("error reading Tunnel %s. Sz:%v", err, n)
 			return
 		}
+		oPkt = pkt
 
-		// Intercept and handle Arp requests.
-		packet := gopacket.NewPacket(pkt, layers.LayerTypeEthernet, gopacket.Default)
-		_, ok := packet.Layer(layers.LayerTypeARP).(*layers.ARP)
-		if ok {
-			if err := c.handleArp(packet); err != nil {
-				c.Error <- fmt.Errorf("err sending arp %v", err)
+		// Special handling for TAP; ARP/DHCP.
+		if c.NetIfce.handle.IsTAP() {
+			packet := gopacket.NewPacket(pkt, layers.LayerTypeEthernet, gopacket.Default)
+			if _, ok := packet.Layer(layers.LayerTypeARP).(*layers.ARP); ok {
+				if err := c.handleArp(packet); err != nil {
+					c.Error <- fmt.Errorf("err sending arp %v", err)
+				}
+				continue
 			}
-			continue
+			if _, ok := packet.Layer(layers.LayerTypeDHCPv4).(*layers.DHCPv4); ok {
+				if err := c.handleDHCP(packet); err != nil {
+					c.Error <- fmt.Errorf("err sending dhcp  %v", err)
+				}
+				continue
+			}
+			// Only send IPv4 unicast packets to reduce noisy windows machines.
+			ipv4, ok := packet.Layer(layers.LayerTypeIPv4).(*layers.IPv4)
+			if !ok || ipv4.DstIP.IsMulticast() {
+				continue
+			}
+			// Strip Ethernet header and send.
+			oPkt = packet.Layer(layers.LayerTypeEthernet).(*layers.Ethernet).LayerPayload()
 		}
 
+		webtunnelcommon.PrintPacketIPv4(oPkt, "Daemon -> Client")
 		// Send packet to client.
-		//		webtunnelcommon.PrintPacketIPv4(eth.LayerPayload(), "Daemon -> Client")
-		if _, err := c.pktConn.WriteTo(pkt, c.NetIfce.RemoteAddr); err != nil {
+		if _, err := c.pktConn.WriteTo(oPkt, c.NetIfce.RemoteAddr); err != nil {
 			c.Error <- fmt.Errorf("error writing to websocket: %s.", err)
 			return
 		}
 	}
 }
 
-func (c *ClientDaemon) handleDHCP(ifce *water.Interface, packet gopacket.Packet) error {
+func (c *ClientDaemon) buildDHCPopts(leaseTime uint, msgType layers.DHCPMsgType) layers.DHCPOptions {
+	var opt []layers.DHCPOption
+
+	for _, s := range c.NetIfce.InterfaceCfg.DNS {
+		opt = append(opt, layers.NewDHCPOption(layers.DHCPOptDNS, net.ParseIP(s).To4()))
+	}
+	opt = append(opt, layers.NewDHCPOption(layers.DHCPOptSubnetMask, net.ParseIP(c.NetIfce.InterfaceCfg.Netmask).To4()))
+	opt = append(opt, layers.NewDHCPOption(layers.DHCPOptLeaseTime, []byte{0, 0, 0, 200}))
+	opt = append(opt, layers.NewDHCPOption(layers.DHCPOptMessageType, []byte{byte(msgType)}))
+	for _, r := range c.NetIfce.InterfaceCfg.RoutePrefix {
+		_, n, _ := net.ParseCIDR(r)
+		netAddr := []byte(n.IP.To4())
+		mask, _ := n.Mask.Size()
+		b := mask / 8
+		if mask%8 > 0 {
+			b++
+		}
+		// Add only the size of netmask.
+		netAddr = netAddr[:b]
+		var route []byte
+		route = append(route, byte(mask))                                        // Add netmask size.
+		route = append(route, netAddr...)                                        // Add network.
+		route = append(route, net.ParseIP(c.NetIfce.InterfaceCfg.GWIP).To4()...) // Add gateway.
+		opt = append(opt, layers.NewDHCPOption(layers.DHCPOptClasslessStaticRoute, route))
+	}
+	return opt
+}
+
+func (c *ClientDaemon) handleDHCP(packet gopacket.Packet) error {
 
 	dhcp := packet.Layer(layers.LayerTypeDHCPv4).(*layers.DHCPv4)
 	udp := packet.Layer(layers.LayerTypeUDP).(*layers.UDP)
@@ -264,49 +301,22 @@ func (c *ClientDaemon) handleDHCP(ifce *water.Interface, packet gopacket.Packet)
 		}
 	}
 
-	var dhcpl *layers.DHCPv4
+	var dhcpl = &layers.DHCPv4{
+		Operation:    0x2, // DHCP reply.
+		HardwareType: layers.LinkTypeEthernet,
+		HardwareLen:  dhcp.HardwareLen,
+		Xid:          dhcp.Xid,
+		YourClientIP: net.ParseIP(c.NetIfce.InterfaceCfg.IP).To4(),
+		NextServerIP: net.ParseIP(c.NetIfce.InterfaceCfg.GWIP).To4(),
+		ClientHWAddr: eth.SrcMAC,
+	}
 
 	switch msgType {
 	case layers.DHCPMsgTypeDiscover:
-
-		dhcpl = &layers.DHCPv4{
-			Operation:    0x2, // DHCP reply.
-			HardwareType: layers.LinkTypeEthernet,
-			HardwareLen:  dhcp.HardwareLen,
-			HardwareOpts: 0,
-			Xid:          dhcp.Xid,
-			YourClientIP: net.IP{10, 10, 10, 10},
-			NextServerIP: net.IP{192, 168, 251, 1},
-			ClientHWAddr: eth.SrcMAC,
-			Options: []layers.DHCPOption{
-				layers.NewDHCPOption(layers.DHCPOptDNS, net.IP{192, 168, 251, 1}),
-				layers.NewDHCPOption(layers.DHCPOptSubnetMask, net.IP{255, 255, 255, 0}),
-				layers.NewDHCPOption(layers.DHCPOptLeaseTime, []byte{0, 0, 0, 10}),
-				layers.NewDHCPOption(layers.DHCPOptServerID, net.IP{192, 168, 251, 1}),
-				layers.NewDHCPOption(layers.DHCPOptMessageType, []byte{byte(layers.DHCPMsgTypeOffer)}),
-				layers.NewDHCPOption(layers.DHCPOptClasslessStaticRoute, []byte{25, 172, 57, 26, 10, 192, 168, 251, 1}),
-			},
-		}
+		dhcpl.Options = c.buildDHCPopts(30, layers.DHCPMsgTypeOffer)
 
 	case layers.DHCPMsgTypeRequest:
-		dhcpl = &layers.DHCPv4{
-			Operation:    0x2, // DHCP reply.
-			HardwareType: layers.LinkTypeEthernet,
-			HardwareLen:  dhcp.HardwareLen,
-			HardwareOpts: 0,
-			Xid:          dhcp.Xid,
-			YourClientIP: net.IP{10, 10, 10, 10},
-			NextServerIP: net.IP{192, 168, 251, 1},
-			ClientHWAddr: eth.SrcMAC,
-			Options: []layers.DHCPOption{
-				layers.NewDHCPOption(layers.DHCPOptDNS, net.IP{192, 168, 251, 1}),
-				layers.NewDHCPOption(layers.DHCPOptSubnetMask, net.IP{255, 255, 255, 0}),
-				layers.NewDHCPOption(layers.DHCPOptLeaseTime, []byte{0, 0, 0, 10}),
-				layers.NewDHCPOption(layers.DHCPOptServerID, net.IP{192, 168, 251, 1}),
-				layers.NewDHCPOption(layers.DHCPOptMessageType, []byte{byte(layers.DHCPMsgTypeAck)}),
-				layers.NewDHCPOption(layers.DHCPOptClasslessStaticRoute, []byte{25, 172, 57, 26, 10, 192, 168, 251, 1}),
-			},
-		}
+		dhcpl.Options = c.buildDHCPopts(30, layers.DHCPMsgTypeAck)
 
 	case layers.DHCPMsgTypeRelease:
 		glog.Warningf("Got an IP release request. Unexpected.")
@@ -315,14 +325,14 @@ func (c *ClientDaemon) handleDHCP(ifce *water.Interface, packet gopacket.Packet)
 	// Construct and send DHCP Packet.
 	opts := gopacket.SerializeOptions{FixLengths: true, ComputeChecksums: true}
 	ethl := &layers.Ethernet{
-		SrcMAC:       net.HardwareAddr{0x80, 0xE6, 0x50, 0x18, 0x9B, 0xBA},
+		SrcMAC:       c.NetIfce.gwHWAddr,
 		DstMAC:       net.HardwareAddr{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF},
 		EthernetType: layers.EthernetTypeIPv4,
 	}
 	ipv4l := &layers.IPv4{
 		Version:  ipv4.Version,
 		TTL:      ipv4.TTL,
-		SrcIP:    net.IP{192, 168, 251, 1},
+		SrcIP:    net.ParseIP(c.NetIfce.InterfaceCfg.GWIP).To4(),
 		DstIP:    net.IP{255, 255, 255, 255},
 		Protocol: layers.IPProtocolUDP,
 	}
@@ -354,13 +364,9 @@ func (c *ClientDaemon) handleArp(packet gopacket.Packet) error {
 		return nil
 	}
 
-	// Create a fake mac to respond to ARP requests for gateway.
-	vMac := eth.SrcMAC
-	vMac[2] = +1
-
 	// Construct and send ARP response.
 	ethl := &layers.Ethernet{
-		SrcMAC:       vMac,
+		SrcMAC:       c.NetIfce.gwHWAddr,
 		DstMAC:       eth.SrcMAC,
 		EthernetType: layers.EthernetTypeARP,
 	}
@@ -371,7 +377,7 @@ func (c *ClientDaemon) handleArp(packet gopacket.Packet) error {
 		HwAddressSize:     arp.HwAddressSize,
 		ProtAddressSize:   arp.ProtAddressSize,
 		Operation:         layers.ARPReply,
-		SourceHwAddress:   vMac,
+		SourceHwAddress:   c.NetIfce.gwHWAddr,
 		SourceProtAddress: arp.DstProtAddress,
 		DstHwAddress:      arp.SourceHwAddress,
 		DstProtAddress:    arp.SourceProtAddress,
