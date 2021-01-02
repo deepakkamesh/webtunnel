@@ -13,69 +13,6 @@ import (
 	"github.com/songgao/water"
 )
 
-type NetIfce struct {
-	handle       *water.Interface // Handle to interface.
-	RemoteAddr   *net.UDPAddr     // remote IP for client.
-	InterfaceCfg *InterfaceCfg    // Interface Configuration.
-	localHWAddr  net.HardwareAddr // Local Mac Address set if TAP only.
-	gwHWAddr     net.HardwareAddr // Fake HW addr for Gateway IP. needed since we use TUN at server.
-}
-
-type InterfaceCfg struct {
-	IP          string
-	GWIP        string
-	Netmask     string
-	DNS         []string
-	RoutePrefix []string
-}
-
-// NetNetIfce create a new tunnel interface.
-func NewNetIfce(devType water.DeviceType) (*NetIfce, error) {
-	handle, err := water.New(water.Config{
-		DeviceType: devType,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("error creating int %s", err)
-	}
-
-	return &NetIfce{
-		handle:      handle,
-		localHWAddr: webtunnelcommon.GetMacbyName(handle.Name()),
-		gwHWAddr:    webtunnelcommon.GenMACAddr(),
-	}, nil
-}
-
-func (i *NetIfce) SetInterfaceCfg(a InterfaceCfg, r *struct{}) error {
-	glog.V(1).Infof("Got net config from client cfg:%v, Ifce:%s", a, i.handle.Name())
-	i.InterfaceCfg = &a
-	// If TAP, DHCP handles interface config. Nothing to do return.
-	if i.handle.IsTAP() {
-		return nil
-	}
-	// Tun devices need to be configured from cli.
-	if i.handle.IsTUN() {
-		if err := SetIP(&a, i.handle.Name()); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (i *NetIfce) SetRemote(addr *net.UDPAddr, r *struct{}) error {
-	glog.Infof("New remote endpoint connected: %s", addr.String())
-	i.RemoteAddr = addr
-	return nil
-}
-
-func (i *NetIfce) Bye(s string, r *struct{}) error {
-	return nil
-}
-
-// Ping function is called from Client to check health of Daemon.
-func (i *NetIfce) Ping(s string, r *struct{}) error {
-	return nil
-}
-
 // ClientDaemon represents a daemon structure.
 type ClientDaemon struct {
 	DaemonPort int          // Daemon IPPort.
@@ -134,47 +71,13 @@ func (c *ClientDaemon) Stop() error {
 	return c.pktConn.Close()
 }
 
-/*
-func (c *ClientDaemon) processNetPkt() {
-	pkt := make([]byte, 2048)
-
-	for {
-		if _, _, err := c.pktConn.ReadFrom(pkt); err != nil {
-			c.Error <- fmt.Errorf("error reading udp %s.", err)
-			return
-		}
-		webtunnelcommon.PrintPacketIPv4(pkt, "Daemon <- Client")
-		if _, err := c.NetIfce.handle.Write(pkt); err != nil {
-			c.Error <- fmt.Errorf("error writing to tunnel %s.", err)
-			return
-		}
-	}
-}
-
-func (c *ClientDaemon) processTUNPkt() {
-	pkt := make([]byte, 2048)
-	// If Daemon is not configured do not process packets.
-	for {
-		if c.NetIfce.RemoteAddr == nil {
-			continue
-		}
-		if _, err := c.NetIfce.handle.Read(pkt); err != nil {
-			c.Error <- fmt.Errorf("error reading tunnel %s.", err)
-			return
-		}
-		//TODO:remove	webtunnelcommon.PrintPacketIPv4(pkt, "Daemon -> Client")
-		if _, err := c.pktConn.WriteTo(pkt, c.NetIfce.RemoteAddr); err != nil {
-			c.Error <- fmt.Errorf("error writing to websocket: %s.", err)
-			return
-		}
-	}
-}*/
 func (c *ClientDaemon) processNetPkt() {
 	pkt := make([]byte, 2048)
 	var oPkt []byte
 	opts := gopacket.SerializeOptions{FixLengths: true, ComputeChecksums: true}
 
 	for {
+		// Read from UDP (client).
 		n, _, err := c.pktConn.ReadFrom(pkt)
 		if err != nil {
 			c.Error <- fmt.Errorf("error reading Udp %s. Size:%v", err, n)
@@ -199,6 +102,7 @@ func (c *ClientDaemon) processNetPkt() {
 			}
 			oPkt = buffer.Bytes()
 		}
+
 		// Send packet to network interface.
 		if _, err := c.NetIfce.handle.Write(oPkt); err != nil {
 			c.Error <- fmt.Errorf("error writing to tunnel %s.", err)
@@ -207,17 +111,17 @@ func (c *ClientDaemon) processNetPkt() {
 	}
 }
 
-// processTAPPkt handles TAP interface.
 func (c *ClientDaemon) processTUNTAPPkt() {
 	pkt := make([]byte, 2048)
 	var oPkt []byte
 
-	// If Daemon is not configured do not process packets.
 	for {
+		// If Daemon is not configured do not process packets.
 		if c.NetIfce.RemoteAddr == nil {
 			continue
 		}
 
+		// Read from TUN/TAP network interface.
 		n, err := c.NetIfce.handle.Read(pkt)
 		if err != nil {
 			c.Error <- fmt.Errorf("error reading Tunnel %s. Sz:%v", err, n)
@@ -249,8 +153,8 @@ func (c *ClientDaemon) processTUNTAPPkt() {
 			oPkt = packet.Layer(layers.LayerTypeEthernet).(*layers.Ethernet).LayerPayload()
 		}
 
+		// Send packet to client via UDP.
 		webtunnelcommon.PrintPacketIPv4(oPkt, "Daemon -> Client")
-		// Send packet to client.
 		if _, err := c.pktConn.WriteTo(oPkt, c.NetIfce.RemoteAddr); err != nil {
 			c.Error <- fmt.Errorf("error writing to websocket: %s.", err)
 			return
@@ -258,15 +162,20 @@ func (c *ClientDaemon) processTUNTAPPkt() {
 	}
 }
 
-func (c *ClientDaemon) buildDHCPopts(leaseTime uint, msgType layers.DHCPMsgType) layers.DHCPOptions {
+func (c *ClientDaemon) buildDHCPopts(leaseTime uint8, msgType layers.DHCPMsgType) layers.DHCPOptions {
 	var opt []layers.DHCPOption
 
 	for _, s := range c.NetIfce.InterfaceCfg.DNS {
 		opt = append(opt, layers.NewDHCPOption(layers.DHCPOptDNS, net.ParseIP(s).To4()))
 	}
 	opt = append(opt, layers.NewDHCPOption(layers.DHCPOptSubnetMask, net.ParseIP(c.NetIfce.InterfaceCfg.Netmask).To4()))
-	opt = append(opt, layers.NewDHCPOption(layers.DHCPOptLeaseTime, []byte{0, 0, 0, 200}))
+	opt = append(opt, layers.NewDHCPOption(layers.DHCPOptLeaseTime, []byte{0, 0, 0, leaseTime}))
 	opt = append(opt, layers.NewDHCPOption(layers.DHCPOptMessageType, []byte{byte(msgType)}))
+	opt = append(opt, layers.NewDHCPOption(layers.DHCPOptServerID, net.ParseIP(c.NetIfce.InterfaceCfg.GWIP).To4()))
+
+	// Construct the classless static route.
+	// format: {size of netmask, <route prefix>, <gateway> ...}
+	// The size of netmask dictates how to read the route prefix. (eg. 24 - read next 3 bytes or 25 read next 4 bytes)
 	for _, r := range c.NetIfce.InterfaceCfg.RoutePrefix {
 		_, n, _ := net.ParseCIDR(r)
 		netAddr := []byte(n.IP.To4())
@@ -302,7 +211,7 @@ func (c *ClientDaemon) handleDHCP(packet gopacket.Packet) error {
 	}
 
 	var dhcpl = &layers.DHCPv4{
-		Operation:    0x2, // DHCP reply.
+		Operation:    layers.DHCPOpReply,
 		HardwareType: layers.LinkTypeEthernet,
 		HardwareLen:  dhcp.HardwareLen,
 		Xid:          dhcp.Xid,
@@ -345,9 +254,9 @@ func (c *ClientDaemon) handleDHCP(packet gopacket.Packet) error {
 	}
 	buffer := gopacket.NewSerializeBuffer()
 	if err := gopacket.SerializeLayers(buffer, opts, ethl, ipv4l, udpl, dhcpl); err != nil {
-		return fmt.Errorf("error Serializelayer %s", err)
+		return fmt.Errorf("error serializelayer %s", err)
 	}
-	fmt.Println(gopacket.NewPacket(buffer.Bytes(), layers.LayerTypeEthernet, gopacket.Default))
+	webtunnelcommon.PrintPacketEth(buffer.Bytes(), "DHCP Reply")
 	if _, err := c.NetIfce.handle.Write(buffer.Bytes()); err != nil {
 		return err
 	}
@@ -355,6 +264,8 @@ func (c *ClientDaemon) handleDHCP(packet gopacket.Packet) error {
 	return nil
 }
 
+// handleArp handles the ARPs requests via the TAP interface. All responses are
+// sent the virtual MAC HWAddr for gateway.
 func (c *ClientDaemon) handleArp(packet gopacket.Packet) error {
 
 	arp := packet.Layer(layers.LayerTypeARP).(*layers.ARP)
@@ -365,12 +276,6 @@ func (c *ClientDaemon) handleArp(packet gopacket.Packet) error {
 	}
 
 	// Construct and send ARP response.
-	ethl := &layers.Ethernet{
-		SrcMAC:       c.NetIfce.gwHWAddr,
-		DstMAC:       eth.SrcMAC,
-		EthernetType: layers.EthernetTypeARP,
-	}
-
 	arpl := &layers.ARP{
 		AddrType:          arp.AddrType,
 		Protocol:          arp.Protocol,
@@ -381,6 +286,11 @@ func (c *ClientDaemon) handleArp(packet gopacket.Packet) error {
 		SourceProtAddress: arp.DstProtAddress,
 		DstHwAddress:      arp.SourceHwAddress,
 		DstProtAddress:    arp.SourceProtAddress,
+	}
+	ethl := &layers.Ethernet{
+		SrcMAC:       c.NetIfce.gwHWAddr,
+		DstMAC:       eth.SrcMAC,
+		EthernetType: layers.EthernetTypeARP,
 	}
 
 	opts := gopacket.SerializeOptions{FixLengths: true, ComputeChecksums: true}
