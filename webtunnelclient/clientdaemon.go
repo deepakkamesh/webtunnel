@@ -176,6 +176,7 @@ func (c *ClientDaemon) buildDHCPopts(leaseTime uint8, msgType layers.DHCPMsgType
 	// Construct the classless static route.
 	// format: {size of netmask, <route prefix>, <gateway> ...}
 	// The size of netmask dictates how to read the route prefix. (eg. 24 - read next 3 bytes or 25 read next 4 bytes)
+	var route []byte
 	for _, r := range c.NetIfce.InterfaceCfg.RoutePrefix {
 		_, n, _ := net.ParseCIDR(r)
 		netAddr := []byte(n.IP.To4())
@@ -186,12 +187,12 @@ func (c *ClientDaemon) buildDHCPopts(leaseTime uint8, msgType layers.DHCPMsgType
 		}
 		// Add only the size of netmask.
 		netAddr = netAddr[:b]
-		var route []byte
 		route = append(route, byte(mask))                                        // Add netmask size.
 		route = append(route, netAddr...)                                        // Add network.
 		route = append(route, net.ParseIP(c.NetIfce.InterfaceCfg.GWIP).To4()...) // Add gateway.
-		opt = append(opt, layers.NewDHCPOption(layers.DHCPOptClasslessStaticRoute, route))
 	}
+	opt = append(opt, layers.NewDHCPOption(layers.DHCPOptClasslessStaticRoute, route))
+
 	return opt
 }
 
