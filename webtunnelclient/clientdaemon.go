@@ -1,6 +1,7 @@
 package webtunnelclient
 
 import (
+	"encoding/binary"
 	"fmt"
 	"net"
 	"net/http"
@@ -19,6 +20,7 @@ type ClientDaemon struct {
 	NetIfce    *NetIfce     // Handle to tunnel network interface.
 	pktConn    *net.UDPConn // Handle to UDP connection.
 	Error      chan error   // Channel to handle errors from goroutines.
+	leaseTime  uint32       // DHCP lease time.
 }
 
 // NewClientDaemon returns an initialized Client Daemon.
@@ -40,6 +42,7 @@ func NewClientDaemon(daemonPort int, devType water.DeviceType, f func(*Interface
 		DaemonPort: daemonPort,
 		NetIfce:    netIfce,
 		pktConn:    ser,
+		leaseTime:  300, // leasetime 5min.
 		Error:      make(chan error),
 	}, nil
 }
@@ -162,14 +165,16 @@ func (c *ClientDaemon) processTUNTAPPkt() {
 	}
 }
 
-func (c *ClientDaemon) buildDHCPopts(leaseTime uint8, msgType layers.DHCPMsgType) layers.DHCPOptions {
+func (c *ClientDaemon) buildDHCPopts(leaseTime uint32, msgType layers.DHCPMsgType) layers.DHCPOptions {
 	var opt []layers.DHCPOption
+	tm := make([]byte, 4)
+	binary.BigEndian.PutUint32(tm, leaseTime)
 
 	for _, s := range c.NetIfce.InterfaceCfg.DNS {
 		opt = append(opt, layers.NewDHCPOption(layers.DHCPOptDNS, net.ParseIP(s).To4()))
 	}
 	opt = append(opt, layers.NewDHCPOption(layers.DHCPOptSubnetMask, net.ParseIP(c.NetIfce.InterfaceCfg.Netmask).To4()))
-	opt = append(opt, layers.NewDHCPOption(layers.DHCPOptLeaseTime, []byte{0, 0, 0, leaseTime}))
+	opt = append(opt, layers.NewDHCPOption(layers.DHCPOptLeaseTime, tm))
 	opt = append(opt, layers.NewDHCPOption(layers.DHCPOptMessageType, []byte{byte(msgType)}))
 	opt = append(opt, layers.NewDHCPOption(layers.DHCPOptServerID, net.ParseIP(c.NetIfce.InterfaceCfg.GWIP).To4()))
 
@@ -223,10 +228,10 @@ func (c *ClientDaemon) handleDHCP(packet gopacket.Packet) error {
 
 	switch msgType {
 	case layers.DHCPMsgTypeDiscover:
-		dhcpl.Options = c.buildDHCPopts(30, layers.DHCPMsgTypeOffer)
+		dhcpl.Options = c.buildDHCPopts(c.leaseTime, layers.DHCPMsgTypeOffer)
 
 	case layers.DHCPMsgTypeRequest:
-		dhcpl.Options = c.buildDHCPopts(30, layers.DHCPMsgTypeAck)
+		dhcpl.Options = c.buildDHCPopts(c.leaseTime, layers.DHCPMsgTypeAck)
 
 	case layers.DHCPMsgTypeRelease:
 		glog.Warningf("Got an IP release request. Unexpected.")
