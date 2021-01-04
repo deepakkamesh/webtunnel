@@ -101,7 +101,7 @@ func (r *WebTunnelServer) processTUNPacket() {
 		ip, _ := packet.Layer(layers.LayerTypeIPv4).(*layers.IPv4)
 		data, err := r.ipam.GetData(ip.DstIP.String())
 		if err != nil {
-			glog.Warningf("unsolicited packet for IP:%v", ip.DstIP.String())
+			glog.V(2).Infof("unsolicited packet for IP:%v", ip.DstIP.String())
 			continue
 		}
 
@@ -159,6 +159,14 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 				}
 				if err := conn.WriteJSON(cfg); err != nil {
 					glog.Warningf("error sending config to client: %v", err)
+					return
+				}
+				// Mark IP as in use so packets can be send to it. This is needed to avoid deadlock condition
+				// when a client disconnects but still packets are available in buffer for its ip and a new
+				// client acquires its ip it cannot get the config as the TUN writer is still busy trying to send
+				// packets to it.
+				if err := r.ipam.SetIPActive(ip); err != nil {
+					glog.Errorf("Unable to mark IP %v in use", ip)
 					return
 				}
 			}
