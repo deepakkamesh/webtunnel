@@ -10,11 +10,12 @@ import (
 )
 
 type NetIfce struct {
-	handle       *water.Interface // Handle to interface.
-	RemoteAddr   *net.UDPAddr     // remote IP for client.
-	InterfaceCfg *InterfaceCfg    // Interface Configuration.
-	localHWAddr  net.HardwareAddr // Local Mac Address set if TAP only.
-	gwHWAddr     net.HardwareAddr // Fake HW addr for Gateway IP. needed since we use TUN at server.
+	handle       *water.Interface          // Handle to interface.
+	RemoteAddr   *net.UDPAddr              // remote IP for client.
+	InterfaceCfg *InterfaceCfg             // Interface Configuration.
+	localHWAddr  net.HardwareAddr          // Local Mac Address set if TAP only.
+	gwHWAddr     net.HardwareAddr          // Fake HW addr for Gateway IP. needed since we use TUN at server.
+	initClient   func(*InterfaceCfg) error // Callback function for any OS initializations.
 }
 
 type InterfaceCfg struct {
@@ -23,10 +24,11 @@ type InterfaceCfg struct {
 	Netmask     string
 	DNS         []string
 	RoutePrefix []string
+	IfceName    string
 }
 
 // NetNetIfce create a new tunnel interface.
-func NewNetIfce(devType water.DeviceType) (*NetIfce, error) {
+func NewNetIfce(devType water.DeviceType, f func(*InterfaceCfg) error) (*NetIfce, error) {
 	handle, err := water.New(water.Config{
 		DeviceType: devType,
 	})
@@ -38,6 +40,7 @@ func NewNetIfce(devType water.DeviceType) (*NetIfce, error) {
 		handle:      handle,
 		localHWAddr: webtunnelcommon.GetMacbyName(handle.Name()),
 		gwHWAddr:    webtunnelcommon.GenMACAddr(),
+		initClient:  f,
 	}, nil
 }
 
@@ -45,15 +48,12 @@ func NewNetIfce(devType water.DeviceType) (*NetIfce, error) {
 func (i *NetIfce) SetInterfaceCfg(a InterfaceCfg, r *struct{}) error {
 	glog.V(1).Infof("Got net config from client cfg:%v, Ifce:%s", a, i.handle.Name())
 	i.InterfaceCfg = &a
-	// If TAP, DHCP handles interface config. Nothing to do return.
-	if i.handle.IsTAP() {
-		return nil
-	}
-	// Tun devices need to be configured from cli.
-	if i.handle.IsTUN() {
-		if err := SetIP(&a, i.handle.Name()); err != nil {
-			return err
-		}
+	i.InterfaceCfg.IfceName = i.handle.Name()
+
+	// Call user supplied function for any OS initializations needed from cli.
+	// Depending on OS this might be bringing up OS or other network commands.
+	if err := i.initClient(i.InterfaceCfg); err != nil {
+		return err
 	}
 	return nil
 }

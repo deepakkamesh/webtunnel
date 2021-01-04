@@ -22,9 +22,9 @@ type ClientDaemon struct {
 }
 
 // NewClientDaemon returns an initialized Client Daemon.
-func NewClientDaemon(daemonPort int, devType water.DeviceType) (*ClientDaemon, error) {
-	// Initialize Tunnel interface.
-	netIfce, err := NewNetIfce(devType)
+func NewClientDaemon(daemonPort int, devType water.DeviceType, f func(*InterfaceCfg) error) (*ClientDaemon, error) {
+	// Initialize network interface.
+	netIfce, err := NewNetIfce(devType, f)
 	if err != nil {
 		return nil, err
 	}
