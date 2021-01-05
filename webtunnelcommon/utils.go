@@ -49,6 +49,28 @@ func GetMacbyName(name string) net.HardwareAddr {
 	return nil
 }
 
+// IsConfigured checks if interface ifName is configured with ip.
+func IsConfigured(ifName string, ip string) bool {
+	ints, err := net.Interfaces()
+	if err != nil {
+		return false
+	}
+	for _, i := range ints {
+		if i.Name == ifName {
+			ips, err := i.Addrs()
+			if err != nil {
+				return false
+			}
+			for _, ipAddr := range ips {
+				if ipAddr.String() == ip {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 // Generate a random private MAC address for GW server to handle ARP etc.
 func GenMACAddr() []byte {
 	buf := make([]byte, 6)

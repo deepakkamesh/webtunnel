@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/rpc"
+	"time"
 
 	"github.com/deepakkamesh/webtunnel/webtunnelcommon"
 	"github.com/golang/glog"
@@ -79,6 +80,13 @@ func (c *ClientDaemon) processNetPkt() {
 	var oPkt []byte
 	opts := gopacket.SerializeOptions{FixLengths: true, ComputeChecksums: true}
 
+	// Wait for tap/tun interface configuration to be complete by DHCP(TAP) or manual (TUN).
+	// Otherwise writing to network interface will fail.
+	for !webtunnelcommon.IsConfigured(c.NetIfce.handle.Name(), c.NetIfce.InterfaceCfg.IP) {
+		time.Sleep(100 * time.Millisecond)
+		continue
+	}
+
 	for {
 		// Read from UDP (client).
 		n, _, err := c.pktConn.ReadFrom(pkt)
@@ -118,12 +126,13 @@ func (c *ClientDaemon) processTUNTAPPkt() {
 	pkt := make([]byte, 2048)
 	var oPkt []byte
 
-	for {
-		// If Daemon is not configured do not process packets.
-		if c.NetIfce.RemoteAddr == nil {
-			continue
-		}
+	// Wait for Daemon to be configured or writes to client will fail.
+	for c.NetIfce.RemoteAddr == nil || c.NetIfce.InterfaceCfg == nil {
+		time.Sleep(100 * time.Millisecond)
+		continue
+	}
 
+	for {
 		// Read from TUN/TAP network interface.
 		n, err := c.NetIfce.handle.Read(pkt)
 		if err != nil {
