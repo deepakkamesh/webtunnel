@@ -132,7 +132,7 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 		return
 	}
 
-	glog.Infof("New connection from %s", ip)
+	glog.V(1).Infof("New connection from %s", ip)
 
 	// Process websocket packet.
 	for {

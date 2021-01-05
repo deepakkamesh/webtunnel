@@ -60,7 +60,7 @@ func (i *NetIfce) SetInterfaceCfg(a InterfaceCfg, r *struct{}) error {
 
 // SetRemote sets the remote UDP endpoint address of client.
 func (i *NetIfce) SetRemote(addr *net.UDPAddr, r *struct{}) error {
-	glog.Infof("New remote endpoint connected: %s", addr.String())
+	glog.V(1).Infof("New remote endpoint connected: %s", addr.String())
 	i.RemoteAddr = addr
 	return nil
 }
