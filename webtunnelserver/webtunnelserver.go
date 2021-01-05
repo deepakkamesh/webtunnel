@@ -18,6 +18,12 @@ var upgrader = websocket.Upgrader{
 	WriteBufferSize: 4096,
 }
 
+type Metrics struct {
+	Users   int // Total connected users.
+	Packets int // total packets.
+	Bytes   int // bytes pushed.
+}
+
 type WebTunnelServer struct {
 	serverIPPort    string                     // IP Port for binding on server.
 	ifce            *water.Interface           // Tunnel interface handle.
@@ -31,6 +37,8 @@ type WebTunnelServer struct {
 	httpsCertFile   string                     // Cert file for HTTPS.
 	Error           chan error                 // Channel to handle error from goroutine.
 	dnsIPs          []string                   // DNS server IPs.
+	metrics         *Metrics                   // Metrics.
+
 }
 
 func NewWebTunnelServer(serverIPPort, gwIP, tunNetmask, clientNetPrefix string, dnsIPs []string, routePrefix []string, httpsKeyFile string, httpsCertFile string) (*WebTunnelServer, error) {
@@ -68,6 +76,7 @@ func NewWebTunnelServer(serverIPPort, gwIP, tunNetmask, clientNetPrefix string, 
 		httpsCertFile:   httpsCertFile,
 		Error:           make(chan error),
 		dnsIPs:          dnsIPs,
+		metrics:         &Metrics{},
 	}, nil
 }
 
@@ -91,10 +100,15 @@ func (r *WebTunnelServer) processTUNPacket() {
 	pkt := make([]byte, 2048)
 
 	for {
-		if _, err := r.ifce.Read(pkt); err != nil {
+		n, err := r.ifce.Read(pkt)
+		if err != nil {
 			r.Error <- fmt.Errorf("error reading from tunnel %s", err)
 			return
 		}
+
+		// Add to metrics.
+		r.metrics.Bytes += n
+		r.metrics.Packets++
 
 		// Get dst IP and corresponding websocket connection.
 		packet := gopacket.NewPacket(pkt, layers.LayerTypeIPv4, gopacket.Default)
@@ -173,10 +187,14 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 
 		case websocket.BinaryMessage: // Packet message.
 			webtunnelcommon.PrintPacketIPv4(message, "Server <- Websocket")
-			if _, err := r.ifce.Write(message); err != nil {
+			n, err := r.ifce.Write(message)
+			if err != nil {
 				r.Error <- fmt.Errorf("error writing to tunnel %s", err)
 				return
 			}
+			// Add to metrics.
+			r.metrics.Bytes += n
+			r.metrics.Packets++
 		}
 	}
 }
@@ -184,4 +202,17 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 // httpEndpoint defines the HTTP / Path. The "Sender" will send an initial request to this URL.
 func (r *WebTunnelServer) httpEndpoint(w http.ResponseWriter, rcv *http.Request) {
 	fmt.Fprint(w, "OK")
+}
+
+// GetMetrics returns the current server metrics.
+func (r *WebTunnelServer) GetMetrics() *Metrics {
+	r.metrics.Users = r.ipam.GetAllocatedCount()
+	return r.metrics
+}
+
+// ResetMetrics resets the metrics on the server.
+func (r *WebTunnelServer) ResetMetrics() {
+	r.metrics.Users = 0
+	r.metrics.Packets = 0
+	r.metrics.Bytes = 0
 }
