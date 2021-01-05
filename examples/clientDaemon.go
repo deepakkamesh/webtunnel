@@ -15,7 +15,7 @@ func main() {
 	glog.Info("Starting ClientDaemon.. Waiting for Config from client..")
 
 	// Initialize and Startup Client Daemon to handle network interface.
-	daemon, err := webtunnelclient.NewClientDaemon(daemonPort, water.TAP)
+	daemon, err := webtunnelclient.NewClientDaemon(daemonPort, water.TUN, InitializeOS)
 	if err != nil {
 		glog.Exitf("Daemon Init failed:%v", err)
 	}
