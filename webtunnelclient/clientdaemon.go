@@ -48,6 +48,7 @@ func NewClientDaemon(daemonPort int, devType water.DeviceType, f func(*Interface
 	}, nil
 }
 
+// Start starts the client Daemon.
 func (c *ClientDaemon) Start() error {
 
 	// Register to RPC and start config Daemon.
@@ -68,6 +69,7 @@ func (c *ClientDaemon) Start() error {
 	return nil
 }
 
+// Stop gracefully shuts down the daemon.
 func (c *ClientDaemon) Stop() error {
 	if err := c.NetIfce.handle.Close(); err != nil {
 		return err
@@ -75,6 +77,7 @@ func (c *ClientDaemon) Stop() error {
 	return c.pktConn.Close()
 }
 
+// processNetPkt processes the packet from Client and writes to network.
 func (c *ClientDaemon) processNetPkt() {
 	pkt := make([]byte, 2048)
 	var oPkt []byte
@@ -123,6 +126,8 @@ func (c *ClientDaemon) processNetPkt() {
 	}
 }
 
+// processTUNTAPPkt process the packet from the TUN/TAP interface and sends to Client via UDP.
+// It also handles DHCP and ARP requests.
 func (c *ClientDaemon) processTUNTAPPkt() {
 	pkt := make([]byte, 2048)
 	var oPkt []byte
@@ -175,6 +180,7 @@ func (c *ClientDaemon) processTUNTAPPkt() {
 	}
 }
 
+// buildDHCPopts builds the options for DHCP Response.
 func (c *ClientDaemon) buildDHCPopts(leaseTime uint32, msgType layers.DHCPMsgType) layers.DHCPOptions {
 	var opt []layers.DHCPOption
 	tm := make([]byte, 4)
@@ -211,6 +217,7 @@ func (c *ClientDaemon) buildDHCPopts(leaseTime uint32, msgType layers.DHCPMsgTyp
 	return opt
 }
 
+// handleDHCP handles the DHCP requests from kernel.
 func (c *ClientDaemon) handleDHCP(packet gopacket.Packet) error {
 
 	dhcp := packet.Layer(layers.LayerTypeDHCPv4).(*layers.DHCPv4)
