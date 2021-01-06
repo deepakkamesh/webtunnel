@@ -82,10 +82,11 @@ func (c *ClientDaemon) processNetPkt() {
 
 	// Wait for tap/tun interface configuration to be complete by DHCP(TAP) or manual (TUN).
 	// Otherwise writing to network interface will fail.
-	for !webtunnelcommon.IsConfigured(c.NetIfce.handle.Name(), c.NetIfce.InterfaceCfg.IP) {
-		time.Sleep(100 * time.Millisecond)
-		continue
+	for c.NetIfce.InterfaceCfg == nil || !webtunnelcommon.IsConfigured(c.NetIfce.handle.Name(), c.NetIfce.InterfaceCfg.IP) {
+		time.Sleep(50 * time.Millisecond)
 	}
+	// Get TAP HW Addr since its now configured.
+	localHWAddr := webtunnelcommon.GetMacbyName(c.NetIfce.handle.Name())
 
 	for {
 		// Read from UDP (client).
@@ -104,7 +105,7 @@ func (c *ClientDaemon) processNetPkt() {
 
 			ethl := &layers.Ethernet{
 				SrcMAC:       c.NetIfce.gwHWAddr,
-				DstMAC:       c.NetIfce.localHWAddr,
+				DstMAC:       localHWAddr,
 				EthernetType: layers.EthernetTypeIPv4,
 			}
 			buffer := gopacket.NewSerializeBuffer()

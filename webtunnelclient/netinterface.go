@@ -13,7 +13,6 @@ type NetIfce struct {
 	handle       *water.Interface          // Handle to interface.
 	RemoteAddr   *net.UDPAddr              // remote IP for client.
 	InterfaceCfg *InterfaceCfg             // Interface Configuration.
-	localHWAddr  net.HardwareAddr          // Local Mac Address set if TAP only.
 	gwHWAddr     net.HardwareAddr          // Fake HW addr for Gateway IP. needed since we use TUN at server.
 	initClient   func(*InterfaceCfg) error // Callback function for any OS initializations.
 }
@@ -37,10 +36,9 @@ func NewNetIfce(devType water.DeviceType, f func(*InterfaceCfg) error) (*NetIfce
 	}
 
 	return &NetIfce{
-		handle:      handle,
-		localHWAddr: webtunnelcommon.GetMacbyName(handle.Name()),
-		gwHWAddr:    webtunnelcommon.GenMACAddr(),
-		initClient:  f,
+		handle:     handle,
+		gwHWAddr:   webtunnelcommon.GenMACAddr(),
+		initClient: f,
 	}, nil
 }
 

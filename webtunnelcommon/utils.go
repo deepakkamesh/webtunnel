@@ -62,7 +62,8 @@ func IsConfigured(ifName string, ip string) bool {
 				return false
 			}
 			for _, ipAddr := range ips {
-				if ipAddr.String() == ip {
+				ipA, _, _ := net.ParseCIDR(ipAddr.String())
+				if ipA.String() == ip {
 					return true
 				}
 			}
