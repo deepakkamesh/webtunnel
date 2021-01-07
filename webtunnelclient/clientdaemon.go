@@ -86,7 +86,8 @@ func (c *ClientDaemon) processNetPkt() {
 	// Wait for tap/tun interface configuration to be complete by DHCP(TAP) or manual (TUN).
 	// Otherwise writing to network interface will fail.
 	for c.NetIfce.InterfaceCfg == nil || !webtunnelcommon.IsConfigured(c.NetIfce.handle.Name(), c.NetIfce.InterfaceCfg.IP) {
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(2 * time.Second)
+		glog.V(1).Infof("Waiting for interface to be ready...")
 	}
 	// Get TAP HW Addr since its now configured.
 	localHWAddr := webtunnelcommon.GetMacbyName(c.NetIfce.handle.Name())
