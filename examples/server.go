@@ -24,7 +24,7 @@ func main() {
 	if err != nil {
 		glog.Fatalf("%s", err)
 	}
-	server.Start()
+	server.Start(false)
 
 	glog.Info("starting DNS Forwarder..")
 	dns, err := webtunnelserver.NewDNSForwarder("192.168.0.1", 53)

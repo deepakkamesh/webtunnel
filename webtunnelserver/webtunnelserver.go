@@ -86,12 +86,16 @@ func NewWebTunnelServer(serverIPPort, gwIP, tunNetmask, clientNetPrefix string, 
 	}, nil
 }
 
-func (r *WebTunnelServer) Start() {
+func (r *WebTunnelServer) Start(secure bool) {
 
 	// Start the HTTP Server.
 	http.HandleFunc("/", r.httpEndpoint)
 	http.HandleFunc("/ws", r.wsEndpoint)
-	go func() { log.Fatal(http.ListenAndServeTLS(r.serverIPPort, r.httpsCertFile, r.httpsKeyFile, nil)) }()
+	if secure {
+		go func() { log.Fatal(http.ListenAndServeTLS(r.serverIPPort, r.httpsCertFile, r.httpsKeyFile, nil)) }()
+	} else {
+		go func() { log.Fatal(http.ListenAndServe(r.serverIPPort, nil)) }()
+	}
 
 	// Read and process packets from the tunnel interface.
 	go r.processTUNPacket()
