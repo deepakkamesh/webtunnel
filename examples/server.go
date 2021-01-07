@@ -20,19 +20,19 @@ func main() {
 
 	glog.Info("starting webtunnel server..")
 	server, err := webtunnelserver.NewWebTunnelServer(*listenAddr, "192.168.0.1",
-		"255.255.255.0", "192.168.0.0/24", dnsIPs, routePrefix, *httpsKeyFile, *httpsCertFile)
+		"255.255.255.0", "192.168.0.0/24", dnsIPs, routePrefix, true, *httpsKeyFile, *httpsCertFile)
 	if err != nil {
 		glog.Fatalf("%s", err)
 	}
-	server.Start(false)
-
-	glog.Info("starting DNS Forwarder..")
-	dns, err := webtunnelserver.NewDNSForwarder("192.168.0.1", 53)
-	if err != nil {
-		glog.Fatal(err)
-	}
-	dns.Start()
-
+	server.Start()
+	/*
+		glog.Info("starting DNS Forwarder..")
+		dns, err := webtunnelserver.NewDNSForwarder("192.168.0.1", 53)
+		if err != nil {
+			glog.Fatal(err)
+		}
+		dns.Start()
+	*/
 	select {
 	case err := <-server.Error:
 		glog.Exitf("Shutting down server %v", err)

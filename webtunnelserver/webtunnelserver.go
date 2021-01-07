@@ -38,6 +38,7 @@ type WebTunnelServer struct {
 	Error           chan error                 // Channel to handle error from goroutine.
 	dnsIPs          []string                   // DNS server IPs.
 	metrics         *Metrics                   // Metrics.
+	secure          bool                       // Start Server with https.
 
 }
 
@@ -47,7 +48,8 @@ var NewWaterInterface = func(c water.Config) (wc.Interface, error) {
 	return water.New(c)
 }
 
-func NewWebTunnelServer(serverIPPort, gwIP, tunNetmask, clientNetPrefix string, dnsIPs []string, routePrefix []string, httpsKeyFile string, httpsCertFile string) (*WebTunnelServer, error) {
+func NewWebTunnelServer(serverIPPort, gwIP, tunNetmask, clientNetPrefix string, dnsIPs []string,
+	routePrefix []string, secure bool, httpsKeyFile string, httpsCertFile string) (*WebTunnelServer, error) {
 
 	// Create TUN interface and initialize it.
 	ifce, err := NewWaterInterface(water.Config{
@@ -83,15 +85,16 @@ func NewWebTunnelServer(serverIPPort, gwIP, tunNetmask, clientNetPrefix string, 
 		Error:           make(chan error),
 		dnsIPs:          dnsIPs,
 		metrics:         &Metrics{},
+		secure:          secure,
 	}, nil
 }
 
-func (r *WebTunnelServer) Start(secure bool) {
+func (r *WebTunnelServer) Start() {
 
 	// Start the HTTP Server.
 	http.HandleFunc("/", r.httpEndpoint)
 	http.HandleFunc("/ws", r.wsEndpoint)
-	if secure {
+	if r.secure {
 		go func() { log.Fatal(http.ListenAndServeTLS(r.serverIPPort, r.httpsCertFile, r.httpsKeyFile, nil)) }()
 	} else {
 		go func() { log.Fatal(http.ListenAndServe(r.serverIPPort, nil)) }()

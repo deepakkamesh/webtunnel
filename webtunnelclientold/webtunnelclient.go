@@ -1,7 +1,7 @@
 /*
 * Client for WebSocket VPN
  */
-package webtunnelclient
+package webtunnelclientold
 
 import (
 	"fmt"

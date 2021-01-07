@@ -73,7 +73,7 @@ func IsConfigured(ifName string, ip string) bool {
 }
 
 // Generate a random private MAC address for GW server to handle ARP etc.
-func GenMACAddr() []byte {
+func GenMACAddr() net.HardwareAddr {
 	buf := make([]byte, 6)
 	rand.Read(buf)
 	// Set the local bit
