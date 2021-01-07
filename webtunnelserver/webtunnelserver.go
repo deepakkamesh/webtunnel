@@ -5,7 +5,7 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/deepakkamesh/webtunnel/webtunnelcommon"
+	wc "github.com/deepakkamesh/webtunnel/webtunnelcommon"
 	"github.com/golang/glog"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
@@ -26,7 +26,7 @@ type Metrics struct {
 
 type WebTunnelServer struct {
 	serverIPPort    string                     // IP Port for binding on server.
-	ifce            *water.Interface           // Tunnel interface handle.
+	ifce            wc.Interface               // Tunnel interface handle.
 	Conns           map[string]*websocket.Conn // Websocket connection.
 	routePrefix     []string                   // Route prefix for client config.
 	tunNetmask      string                     // Netmask for clients.
@@ -41,17 +41,23 @@ type WebTunnelServer struct {
 
 }
 
+// To override in testing.
+var initTunnel = initializeTunnel
+var NewWaterInterface = func(c water.Config) (wc.Interface, error) {
+	return water.New(c)
+}
+
 func NewWebTunnelServer(serverIPPort, gwIP, tunNetmask, clientNetPrefix string, dnsIPs []string, routePrefix []string, httpsKeyFile string, httpsCertFile string) (*WebTunnelServer, error) {
 
 	// Create TUN interface and initialize it.
-	ifce, err := water.New(
-		water.Config{
-			DeviceType: water.TUN,
-		})
+	ifce, err := NewWaterInterface(water.Config{
+		DeviceType: water.TUN,
+	})
+
 	if err != nil {
 		return nil, fmt.Errorf("error creating TUN int %s", err)
 	}
-	if err := initializeTunnel(ifce.Name(), gwIP, tunNetmask); err != nil {
+	if err := initTunnel(ifce.Name(), gwIP, tunNetmask); err != nil {
 		return nil, err
 	}
 
@@ -119,7 +125,7 @@ func (r *WebTunnelServer) processTUNPacket() {
 			continue
 		}
 
-		webtunnelcommon.PrintPacketIPv4(pkt, "Server <- Tunnel")
+		wc.PrintPacketIPv4(pkt, "Server <- Tunnel")
 
 		ws := data.(*websocket.Conn)
 		if err := ws.WriteMessage(websocket.BinaryMessage, pkt); err != nil {
@@ -164,7 +170,7 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 		switch mt {
 		case websocket.TextMessage: // Config message.
 			if string(message) == "getConfig" {
-				cfg := &webtunnelcommon.ClientConfig{
+				cfg := &wc.ClientConfig{
 					Ip:          ip,
 					Netmask:     r.tunNetmask,
 					RoutePrefix: r.routePrefix,
@@ -186,7 +192,7 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 			}
 
 		case websocket.BinaryMessage: // Packet message.
-			webtunnelcommon.PrintPacketIPv4(message, "Server <- Websocket")
+			wc.PrintPacketIPv4(message, "Server <- Websocket")
 			n, err := r.ifce.Write(message)
 			if err != nil {
 				r.Error <- fmt.Errorf("error writing to tunnel %s", err)
