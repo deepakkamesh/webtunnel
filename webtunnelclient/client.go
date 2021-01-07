@@ -18,7 +18,7 @@ import (
 	"github.com/songgao/water"
 )
 
-// Interface represents the network interface configuration.
+// Interface represents the network interface.
 type Interface struct {
 	IP           net.IP           // IP address.
 	GWIP         net.IP           // Gateway IP.

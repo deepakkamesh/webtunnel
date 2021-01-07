@@ -132,7 +132,7 @@ func (r *WebTunnelServer) processTUNPacket() {
 			continue
 		}
 
-		wc.PrintPacketIPv4(pkt, "Server <- Tunnel")
+		wc.PrintPacketIPv4(pkt, "Server <- NetInterface")
 
 		ws := data.(*websocket.Conn)
 		if err := ws.WriteMessage(websocket.BinaryMessage, pkt); err != nil {

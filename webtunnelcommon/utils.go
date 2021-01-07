@@ -1,3 +1,4 @@
+/* webtunnelcommon package has common utils/structs for client/server */
 package webtunnelcommon
 
 import (
@@ -14,6 +15,7 @@ const (
 	DiagLevelDebug = 2
 )
 
+// ClientConfig represents the struct to pass config from server to client.
 type ClientConfig struct {
 	Ip          string   `json:"ip"`          // IP address of client.
 	Netmask     string   `json:"netmask"`     // Netmask of interface.
@@ -22,6 +24,7 @@ type ClientConfig struct {
 	DNS         []string `json:"dns"`         // DNS IPs
 }
 
+// PrintPacketIPv4 prints the IPv4 packet.
 func PrintPacketIPv4(pkt []byte, tag string) {
 	packet := gopacket.NewPacket(pkt, layers.LayerTypeIPv4, gopacket.Default)
 	if _, ok := packet.Layer(layers.LayerTypeIPv4).(*layers.IPv4); ok {
@@ -29,6 +32,7 @@ func PrintPacketIPv4(pkt []byte, tag string) {
 	}
 }
 
+// PrintPacketEth prints the Ethernet packet.
 func PrintPacketEth(pkt []byte, tag string) {
 	packet := gopacket.NewPacket(pkt, layers.LayerTypeEthernet, gopacket.Default)
 	if _, ok := packet.Layer(layers.LayerTypeEthernet).(*layers.Ethernet); ok {
@@ -36,6 +40,7 @@ func PrintPacketEth(pkt []byte, tag string) {
 	}
 }
 
+// Get the mac address of the interface by name. eg. eth0.
 func GetMacbyName(name string) net.HardwareAddr {
 	ints, err := net.Interfaces()
 	if err != nil {
