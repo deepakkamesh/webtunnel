@@ -23,7 +23,8 @@ func main() {
 	wsDialer := websocket.Dialer{}
 	wsDialer.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 
-	client, err := webtunnelclient.NewWebtunnelClient("192.168.1.117:8811", &wsDialer, water.TUN, InitializeOS, true)
+	client, err := webtunnelclient.NewWebtunnelClient("192.168.1.117:8811", &wsDialer,
+		water.TUN, InitializeOS, true, 30)
 
 	if err != nil {
 		glog.Exitf("Failed to initialize client: %s", err)

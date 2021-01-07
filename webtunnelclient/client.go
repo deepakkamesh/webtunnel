@@ -46,7 +46,7 @@ var newWaterInterface = func(c water.Config) (wc.Interface, error) {
 
 // NewWebTunnelClient returns an initialized webtunnel client.
 func NewWebtunnelClient(serverIPPort string, wsDialer *websocket.Dialer,
-	devType water.DeviceType, f func(*Interface) error, secure bool) (*WebtunnelClient, error) {
+	devType water.DeviceType, f func(*Interface) error, secure bool, leaseTime uint32) (*WebtunnelClient, error) {
 
 	// Initialize websocket connection.
 	scheme := "ws"
@@ -72,6 +72,7 @@ func NewWebtunnelClient(serverIPPort string, wsDialer *websocket.Dialer,
 		Error:  make(chan error),
 		ifce: &Interface{
 			Interface: handle,
+			leaseTime: leaseTime,
 		},
 		userInitFunc: f,
 	}, nil
@@ -119,7 +120,6 @@ func (w *WebtunnelClient) configureInterface() error {
 	w.ifce.DNS = dnsIPs
 	w.ifce.RoutePrefix = routes
 	w.ifce.gwHWAddr = wc.GenMACAddr()
-	w.ifce.leaseTime = 300
 
 	// Call user supplied function for any OS initializations needed from cli.
 	// Depending on OS this might be bringing up OS or other network commands.
