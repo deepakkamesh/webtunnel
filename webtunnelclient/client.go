@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"sync"
 	"time"
 
 	wc "github.com/deepakkamesh/webtunnel/webtunnelcommon"
@@ -38,6 +39,7 @@ type WebtunnelClient struct {
 	Error        chan error             // Channel to handle errors from goroutines.
 	ifce         *Interface             // Struct to hold interface configuration.
 	userInitFunc func(*Interface) error // User supplied callback for OS initialization.
+	wsWriteLock  sync.Mutex             // Lock for Websocket Writes.
 }
 
 // Overrides for testing.
@@ -133,7 +135,10 @@ func (w *WebtunnelClient) configureInterface() error {
 
 // Stop gracefully shutdowns the client after notifying the server.
 func (w *WebtunnelClient) Stop() error {
+	// Read Writes in websocket do not support concurrency.
+	w.wsWriteLock.Lock()
 	err := w.wsconn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+	w.wsWriteLock.Unlock()
 	if err != nil {
 		return err
 	}
@@ -242,7 +247,10 @@ func (w *WebtunnelClient) processNetPacket() {
 		}
 
 		wc.PrintPacketIPv4(oPkt, "Client  -> Websocket")
-		if err := w.wsconn.WriteMessage(websocket.BinaryMessage, oPkt); err != nil {
+		w.wsWriteLock.Lock()
+		err = w.wsconn.WriteMessage(websocket.BinaryMessage, oPkt)
+		w.wsWriteLock.Unlock()
+		if err != nil {
 			if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
 				return
 			}
