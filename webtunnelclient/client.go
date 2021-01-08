@@ -4,6 +4,7 @@
 package webtunnelclient
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"net"
@@ -295,12 +296,17 @@ func (w *WebtunnelClient) handleDHCP(packet gopacket.Packet) error {
 	ipv4 := packet.Layer(layers.LayerTypeIPv4).(*layers.IPv4)
 	eth := packet.Layer(layers.LayerTypeEthernet).(*layers.Ethernet)
 
-	// Get the DHCP Message Type.
+	// Get relevant info from DHCP request options.
 	var msgType layers.DHCPMsgType
+	var reqIP net.IP
 	for _, v := range dhcp.Options {
 		if v.Type == layers.DHCPOptMessageType {
 			msgType = layers.DHCPMsgType(v.Data[0])
 		}
+		if v.Type == layers.DHCPOptRequestIP {
+			reqIP = net.IP(v.Data)
+		}
+
 	}
 
 	var dhcpl = &layers.DHCPv4{
@@ -318,7 +324,13 @@ func (w *WebtunnelClient) handleDHCP(packet gopacket.Packet) error {
 		dhcpl.Options = w.buildDHCPopts(w.ifce.leaseTime, layers.DHCPMsgTypeOffer)
 
 	case layers.DHCPMsgTypeRequest:
-		dhcpl.Options = w.buildDHCPopts(w.ifce.leaseTime, layers.DHCPMsgTypeAck)
+		// If the requested/client IP is not the same as from the config force a NAK
+		// to start the discovery process again.
+		if bytes.Compare(reqIP, w.ifce.IP) == 0 || bytes.Compare(dhcp.ClientIP, w.ifce.IP) == 0 {
+			dhcpl.Options = w.buildDHCPopts(w.ifce.leaseTime, layers.DHCPMsgTypeAck)
+		} else {
+			dhcpl.Options = w.buildDHCPopts(w.ifce.leaseTime, layers.DHCPMsgTypeNak)
+		}
 
 	case layers.DHCPMsgTypeRelease:
 		glog.Warningf("Got an IP release request. Unexpected.")
