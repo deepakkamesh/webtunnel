@@ -2,6 +2,7 @@ package webtunnelserver
 
 import (
 	"bytes"
+	"flag"
 	"net"
 	"net/url"
 	"testing"
@@ -22,7 +23,8 @@ func TestServer(t *testing.T) {
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 	mockInterface := mocks.NewMockInterface(mockCtrl)
-
+	flag.Set("stderrthreshold", "INFO")
+	flag.Set("v", "1")
 	// Override for testing.
 	NewWaterInterface = func(c water.Config) (wc.Interface, error) {
 		return mockInterface, nil

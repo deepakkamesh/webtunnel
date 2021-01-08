@@ -136,7 +136,11 @@ func (r *WebTunnelServer) processTUNPacket() {
 
 		ws := data.(*websocket.Conn)
 		if err := ws.WriteMessage(websocket.BinaryMessage, pkt); err != nil {
-			glog.Warningf("error writing to websocket %s", err)
+			// Ignore close errors.
+			if err == websocket.ErrCloseSent {
+				continue
+			}
+			glog.Warningf("error writing to Websocket %s", err)
 			continue
 		}
 	}
