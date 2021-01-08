@@ -241,7 +241,7 @@ func (w *WebtunnelClient) processNetPacket() {
 			oPkt = packet.Layer(layers.LayerTypeEthernet).(*layers.Ethernet).LayerPayload()
 		}
 
-		wc.PrintPacketIPv4(pkt, "Client  -> Websocket")
+		wc.PrintPacketIPv4(oPkt, "Client  -> Websocket")
 		if err := w.wsconn.WriteMessage(websocket.BinaryMessage, oPkt); err != nil {
 			if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
 				return
