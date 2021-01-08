@@ -1,100 +1,115 @@
 package webtunnelserver
 
 import (
+	"bytes"
+	"net"
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/deepakkamesh/webtunnel/mocks"
 	wc "github.com/deepakkamesh/webtunnel/webtunnelcommon"
 	"github.com/golang/glog"
 	"github.com/golang/mock/gomock"
+	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
 	"github.com/gorilla/websocket"
 	"github.com/songgao/water"
 )
-
-/*
-type waterTest struct {
-	io.ReadWriteCloser
-}
-
-func (w waterTest) Name() string {
-	return "virt0"
-}
-
-func (w waterTest) IsTAP() bool {
-	return true
-}
-
-func (w waterTest) IsTUN() bool {
-	return true
-}*/
-
-var mockInterface *mocks.MockInterface
-
-func NewTestWaterInterface(c water.Config) (wc.Interface, error) {
-	return mockInterface, nil
-}
 
 func TestServer(t *testing.T) {
 
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
-	mockInterface = mocks.NewMockInterface(mockCtrl)
+	mockInterface := mocks.NewMockInterface(mockCtrl)
+
+	// Override for testing.
+	NewWaterInterface = func(c water.Config) (wc.Interface, error) {
+		return mockInterface, nil
+	}
+	initTunnel = func(ifceName, tunIP, tunNetmask string) error {
+		return nil
+	}
+
+	//  Test server init.
 	mockInterface.EXPECT().Name().Return("virt0").AnyTimes()
 	mockInterface.EXPECT().IsTAP().Return(false).AnyTimes()
-
-	// Variables for NewTunn
-	NewWaterInterface = NewTestWaterInterface
-	initTunnel = initializeTestTunnel
 	server, err := NewWebTunnelServer("127.0.0.1:8811", "192.168.0.1",
-		"255.255.255.0", "192.168.0.0/24", []string{"1.1.1.1"}, []string{"1.1.1.1"}, "", "")
+		"255.255.255.0", "192.168.0.0/24", []string{"1.1.1.1"}, []string{"1.1.1.1"}, false, "", "")
 	if err != nil {
 		glog.Fatalf("%s", err)
 	}
 
-	pkt := make([]byte, 2048)
-	mockInterface.EXPECT().Read(pkt).Return(1, nil).AnyTimes()
-	server.Start(false)
+	// Load packet to send to client.
+	pkt := createIPv4Pkt(net.IP{1, 1, 1, 1}, net.IP{192, 168, 0, 2})
+	mockInterface.EXPECT().Read(gomock.Any()).Return(1, nil).SetArg(0, pkt).AnyTimes()
 
-	// Write something.
-	mockInterface.EXPECT().Write([]byte{1, 3, 3}).Return(1, nil).AnyTimes()
-	if err := client([]byte{1, 3, 3}); err != nil {
-		t.Error(err)
-	}
-	/*
-		select {
-		case err := <-server.Error:
-			glog.Exitf("Shutting down server %v", err)
-		}*/
-}
-
-func client(data []byte) error {
+	// Start Server.
+	server.Start()
+	time.Sleep(1 * time.Second)
+	// Initialize a websocket client.
 	u := url.URL{Scheme: "ws", Host: "127.0.0.1:8811", Path: "/ws"}
 	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
 	if err != nil {
-		return err
+		t.Fatal(err)
 	}
-	err = c.WriteMessage(websocket.BinaryMessage, data)
-	if err != nil {
-		return err
-	}
-	//fmt.Println("sds")
-	/*_, message, err := c.ReadMessage()
-	if err != nil {
-		return err
-	}
-	//fmt.Println("sddds")
-	if bytes.Compare(message, make([]byte, 2048)) == 0 {
-		return fmt.Errorf("unexpected")
-	}*/
 
-	return nil
+	// Test Get config from server.
+	if err = c.WriteMessage(websocket.TextMessage, []byte("getConfig")); err != nil {
+		t.Error(err)
+	}
+	cfg := &wc.ClientConfig{}
+	if err := c.ReadJSON(cfg); err != nil {
+		t.Error(err)
+	}
+	if cfg.Ip != "192.168.0.2" {
+		t.Errorf("config failed want 192.168.0.2, got %s", cfg.Ip)
+	}
+
+	// Test packet from client -> server.
+	mockInterface.EXPECT().Write([]byte{1, 3, 3}).Return(1, nil).Times(1)
+	if err = c.WriteMessage(websocket.BinaryMessage, []byte{1, 3, 3}); err != nil {
+		t.Error(err)
+	}
+
+	// Test packet from server -> client.
+	_, b, err := c.ReadMessage()
+	if err != nil {
+		t.Error(err)
+	}
+	packet := gopacket.NewPacket(b, layers.LayerTypeIPv4, gopacket.Default)
+	ip, _ := packet.Layer(layers.LayerTypeIPv4).(*layers.IPv4)
+	if bytes.Compare(ip.SrcIP, net.IP{1, 1, 1, 1}) != 0 {
+		t.Errorf("Write failed: Got %v Expect %v", ip.SrcIP, net.IP{1, 1, 1, 1})
+	}
+
+	// Close connection.
+	err = c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+	if err != nil {
+		t.Error(err)
+	}
+	time.Sleep(time.Second)
+	c.Close()
+
+	// Sleep for sometime to read all messages.
+	ticker := time.NewTicker(1 * time.Second)
+	select {
+	case <-ticker.C:
+		return
+	case err := <-server.Error:
+		t.Error(err)
+	}
 }
 
-func New(config water.Config) (ifce wc.Interface, err error) {
-	return nil, nil
-}
-
-func initializeTestTunnel(ifceName, tunIP, tunNetmask string) error {
-	return nil
+func createIPv4Pkt(srcIP net.IP, dstIP net.IP) []byte {
+	buf := gopacket.NewSerializeBuffer()
+	opts := gopacket.SerializeOptions{}
+	gopacket.SerializeLayers(buf, opts,
+		&layers.IPv4{
+			SrcIP: srcIP,
+			DstIP: dstIP,
+		},
+		&layers.TCP{},
+		gopacket.Payload([]byte{1, 2, 3, 4}))
+	return buf.Bytes()
 }
