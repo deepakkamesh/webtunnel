@@ -3,6 +3,7 @@ package webtunnelcommon
 
 import (
 	"crypto/rand"
+	"fmt"
 	"net"
 
 	"github.com/golang/glog"
@@ -38,6 +39,29 @@ func PrintPacketEth(pkt []byte, tag string) {
 	if _, ok := packet.Layer(layers.LayerTypeEthernet).(*layers.Ethernet); ok {
 		glog.V(2).Infof("%s: %v", tag, packet)
 	}
+}
+
+// GetIntCfg returns the hardware address and IPs for the interface.
+func GetIntCfg(name string) (net.HardwareAddr, []net.IP, error) {
+	ints, err := net.Interfaces()
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, i := range ints {
+		if i.Name == name {
+			netA, err := i.Addrs()
+			if err != nil {
+				return nil, nil, err
+			}
+			var ips []net.IP
+			for _, ipAddr := range netA {
+				ipA, _, _ := net.ParseCIDR(ipAddr.String())
+				ips = append(ips, ipA)
+			}
+			return i.HardwareAddr, ips, nil
+		}
+	}
+	return nil, nil, fmt.Errorf("not found")
 }
 
 // Get the mac address of the interface by name. eg. eth0.
