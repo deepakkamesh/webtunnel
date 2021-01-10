@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"time"
 
 	"github.com/deepakkamesh/webtunnel/webtunnelserver"
 	"github.com/golang/glog"
@@ -33,6 +34,17 @@ func main() {
 		}
 		dns.Start()
 	*/
+
+	// Print Metrics.
+	t := time.NewTicker(30 * time.Second)
+	go func() {
+		for {
+			<-t.C
+			m := server.GetMetrics()
+			glog.Infof("Metrics Users:%v, Bytes: %v/s, Packets:%v/s", m.Users, m.Bytes/30, m.Packets/30)
+			server.ResetMetrics()
+		}
+	}()
 	select {
 	case err := <-server.Error:
 		glog.Exitf("Shutting down server %v", err)
