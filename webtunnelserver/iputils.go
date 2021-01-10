@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net"
+	"sync"
 )
 
 const (
@@ -23,6 +24,7 @@ type IPPam struct {
 	ipnet       *net.IPNet
 	net         net.IP
 	bcast       net.IP
+	lock        sync.Mutex
 }
 
 func NewIPPam(prefix string) (*IPPam, error) {
@@ -59,6 +61,8 @@ func (i *IPPam) GetAllocatedCount() int {
 // Acquire IP gets a free IP and marks the status as requested. SetIPactive should be called
 // to make the IP active.
 func (i *IPPam) AcquireIP(data interface{}) (string, error) {
+	i.lock.Lock()
+	defer i.lock.Unlock()
 
 	for ip := i.ip.Mask(i.ipnet.Mask); i.ipnet.Contains(ip); inc(ip) {
 		if _, exist := i.allocations[ip.String()]; !exist {
@@ -73,6 +77,8 @@ func (i *IPPam) AcquireIP(data interface{}) (string, error) {
 }
 
 func (i *IPPam) SetIPActive(ip string) error {
+	i.lock.Lock()
+	defer i.lock.Unlock()
 
 	if _, exists := i.allocations[ip]; !exists {
 		return fmt.Errorf("IP not available")
@@ -82,6 +88,9 @@ func (i *IPPam) SetIPActive(ip string) error {
 }
 
 func (i *IPPam) GetData(ip string) (interface{}, error) {
+	i.lock.Lock()
+	defer i.lock.Unlock()
+
 	if v, exists := i.allocations[ip]; !exists || v.ipStatus != ipStatusInUse {
 		return nil, fmt.Errorf("IP not available or not marked in use")
 	}
@@ -89,6 +98,8 @@ func (i *IPPam) GetData(ip string) (interface{}, error) {
 }
 
 func (i *IPPam) ReleaseIP(ip string) error {
+	i.lock.Lock()
+	defer i.lock.Unlock()
 
 	if i.net.String() == ip || i.bcast.String() == ip {
 		return fmt.Errorf("cannot release network or broadcast address")
@@ -102,6 +113,9 @@ func (i *IPPam) ReleaseIP(ip string) error {
 
 // Acquires specific IP and marks it as in use.
 func (i *IPPam) AcquireSpecificIP(ip string, data interface{}) error {
+	i.lock.Lock()
+	defer i.lock.Unlock()
+
 	if _, exists := i.allocations[ip]; exists {
 		return fmt.Errorf("IP already in use")
 	}
