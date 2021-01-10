@@ -43,9 +43,11 @@ type WebtunnelClient struct {
 }
 
 // Overrides for testing.
-var newWaterInterface = func(c water.Config) (wc.Interface, error) {
+var NewWaterInterface = func(c water.Config) (wc.Interface, error) {
 	return water.New(c)
 }
+var IsConfigured = wc.IsConfigured
+var GetMacbyName = wc.GetMacbyName
 
 // NewWebTunnelClient returns an initialized webtunnel client.
 func NewWebtunnelClient(serverIPPort string, wsDialer *websocket.Dialer,
@@ -63,7 +65,7 @@ func NewWebtunnelClient(serverIPPort string, wsDialer *websocket.Dialer,
 	}
 
 	// Initialize network interface.
-	handle, err := newWaterInterface(water.Config{
+	handle, err := NewWaterInterface(water.Config{
 		DeviceType: devType,
 	})
 	if err != nil {
@@ -155,12 +157,12 @@ func (w *WebtunnelClient) processWSPacket() {
 
 	// Wait for tap/tun interface configuration to be complete by DHCP(TAP) or manual (TUN).
 	// Otherwise writing to network interface will fail.
-	for !wc.IsConfigured(w.ifce.Name(), w.ifce.IP.String()) {
+	for !IsConfigured(w.ifce.Name(), w.ifce.IP.String()) {
 		time.Sleep(2 * time.Second)
 		glog.V(1).Infof("Waiting for interface to be ready...")
 	}
 	// get the localHW addr only after network interface is configured.
-	w.ifce.localHWAddr = wc.GetMacbyName(w.ifce.Name())
+	w.ifce.localHWAddr = GetMacbyName(w.ifce.Name())
 	glog.V(1).Infof("Interface Ready.")
 
 	opts := gopacket.SerializeOptions{FixLengths: true, ComputeChecksums: true}
