@@ -116,7 +116,6 @@ func (r *WebTunnelServer) processTUNPacket() {
 		n, err := r.ifce.Read(pkt)
 		if err != nil {
 			r.Error <- fmt.Errorf("error reading from tunnel %s", err)
-			return
 		}
 
 		// Add to metrics.
@@ -207,7 +206,6 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 			n, err := r.ifce.Write(message)
 			if err != nil {
 				r.Error <- fmt.Errorf("error writing to tunnel %s", err)
-				return
 			}
 			// Add to metrics.
 			r.metrics.Bytes += n
