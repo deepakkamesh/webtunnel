@@ -71,12 +71,6 @@ func TestServer(t *testing.T) {
 		t.Errorf("config failed want 192.168.0.2, got %s", cfg.Ip)
 	}
 
-	// Test packet from client -> server.
-	mockInterface.EXPECT().Write([]byte{1, 3, 3}).Return(1, nil).AnyTimes()
-	if err = c.WriteMessage(websocket.BinaryMessage, []byte{1, 3, 3}); err != nil {
-		t.Error(err)
-	}
-
 	// Test packet from server -> client.
 	_, b, err := c.ReadMessage()
 	if err != nil {
@@ -86,6 +80,12 @@ func TestServer(t *testing.T) {
 	ip, _ := packet.Layer(layers.LayerTypeIPv4).(*layers.IPv4)
 	if bytes.Compare(ip.SrcIP, net.IP{1, 1, 1, 1}) != 0 {
 		t.Errorf("Write failed: Got %v Expect %v", ip.SrcIP, net.IP{1, 1, 1, 1})
+	}
+
+	// Test packet from client -> server.
+	mockInterface.EXPECT().Write([]byte{1, 3, 3}).Return(1, nil).Times(1)
+	if err = c.WriteMessage(websocket.BinaryMessage, []byte{1, 3, 3}); err != nil {
+		t.Error(err)
 	}
 
 	// Close connection.
