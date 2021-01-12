@@ -1,6 +1,6 @@
-/* Package client runs the client side of the webtunnel. It establishes the
-* the tunnel using a network interface.
- */
+// Package client runs the client side of the webtunnel. It establishes the
+//  the tunnel using a network interface.
+
 package webtunnelclient
 
 import (
