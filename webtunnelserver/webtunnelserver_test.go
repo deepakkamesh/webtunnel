@@ -29,7 +29,7 @@ func TestServer(t *testing.T) {
 	NewWaterInterface = func(c water.Config) (wc.Interface, error) {
 		return mockInterface, nil
 	}
-	initTunnel = func(ifceName, tunIP, tunNetmask string) error {
+	InitTunnel = func(ifceName, tunIP, tunNetmask string) error {
 		return nil
 	}
 

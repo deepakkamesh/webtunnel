@@ -43,7 +43,7 @@ type WebTunnelServer struct {
 }
 
 // To override in testing.
-var initTunnel = initializeTunnel
+var InitTunnel = initializeTunnel
 var NewWaterInterface = func(c water.Config) (wc.Interface, error) {
 	return water.New(c)
 }
@@ -59,7 +59,7 @@ func NewWebTunnelServer(serverIPPort, gwIP, tunNetmask, clientNetPrefix string, 
 	if err != nil {
 		return nil, fmt.Errorf("error creating TUN int %s", err)
 	}
-	if err := initTunnel(ifce.Name(), gwIP, tunNetmask); err != nil {
+	if err := InitTunnel(ifce.Name(), gwIP, tunNetmask); err != nil {
 		return nil, err
 	}
 
@@ -111,19 +111,21 @@ func (r *WebTunnelServer) Stop() {
 func (r *WebTunnelServer) processTUNPacket() {
 	defer func() { r.Error <- nil }()
 	pkt := make([]byte, 2048)
+	var oPkt []byte
 
 	for {
 		n, err := r.ifce.Read(pkt)
 		if err != nil {
 			r.Error <- fmt.Errorf("error reading from tunnel %s", err)
 		}
+		oPkt = pkt[:n]
 
 		// Add to metrics.
 		r.metrics.Bytes += n
 		r.metrics.Packets++
 
 		// Get dst IP and corresponding websocket connection.
-		packet := gopacket.NewPacket(pkt, layers.LayerTypeIPv4, gopacket.Default)
+		packet := gopacket.NewPacket(oPkt, layers.LayerTypeIPv4, gopacket.Default)
 		ip, _ := packet.Layer(layers.LayerTypeIPv4).(*layers.IPv4)
 		data, err := r.ipam.GetData(ip.DstIP.String())
 		if err != nil {
@@ -131,10 +133,10 @@ func (r *WebTunnelServer) processTUNPacket() {
 			continue
 		}
 
-		wc.PrintPacketIPv4(pkt, "Server <- NetInterface")
+		wc.PrintPacketIPv4(oPkt, "Server <- NetInterface")
 
 		ws := data.(*websocket.Conn)
-		if err := ws.WriteMessage(websocket.BinaryMessage, pkt); err != nil {
+		if err := ws.WriteMessage(websocket.BinaryMessage, oPkt); err != nil {
 			// Ignore close errors.
 			if err == websocket.ErrCloseSent {
 				continue

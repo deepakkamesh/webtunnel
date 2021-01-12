@@ -222,11 +222,11 @@ func (w *WebtunnelClient) processNetPacket() {
 			w.Error <- fmt.Errorf("error reading Tunnel %s. Sz:%v", err, n)
 			return
 		}
-		oPkt = pkt
+		oPkt = pkt[:n]
 
 		// Special handling for TAP; ARP/DHCP.
 		if w.ifce.IsTAP() {
-			packet := gopacket.NewPacket(pkt, layers.LayerTypeEthernet, gopacket.Default)
+			packet := gopacket.NewPacket(oPkt, layers.LayerTypeEthernet, gopacket.Default)
 			if _, ok := packet.Layer(layers.LayerTypeARP).(*layers.ARP); ok {
 				if err := w.handleArp(packet); err != nil {
 					w.Error <- fmt.Errorf("err sending arp %v", err)
