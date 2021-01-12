@@ -20,11 +20,13 @@ import (
 
 func TestServer(t *testing.T) {
 
+	flag.Set("stderrthreshold", "INFO")
+	flag.Set("v", "1")
+
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 	mockInterface := mocks.NewMockInterface(mockCtrl)
-	flag.Set("stderrthreshold", "INFO")
-	flag.Set("v", "1")
+
 	// Override for testing.
 	NewWaterInterface = func(c water.Config) (wc.Interface, error) {
 		return mockInterface, nil
@@ -37,18 +39,19 @@ func TestServer(t *testing.T) {
 	mockInterface.EXPECT().Name().Return("virt0").AnyTimes()
 	mockInterface.EXPECT().IsTAP().Return(false).AnyTimes()
 	server, err := NewWebTunnelServer("127.0.0.1:8811", "192.168.0.1",
-		"255.255.255.0", "192.168.0.0/24", []string{"1.1.1.1"}, []string{"1.1.1.1"}, false, "", "")
+		"255.255.255.0", "192.168.0.0/24", []string{"1.1.1.1"}, []string{"1.1.1.0/24"}, false, "", "")
 	if err != nil {
 		glog.Fatalf("%s", err)
 	}
 
 	// Load packet to send to client.
 	pkt := createIPv4Pkt(net.IP{1, 1, 1, 1}, net.IP{192, 168, 0, 2})
-	mockInterface.EXPECT().Read(gomock.Any()).Return(1, nil).SetArg(0, pkt).AnyTimes()
+	mockInterface.EXPECT().Read(gomock.Any()).Return(len(pkt), nil).SetArg(0, pkt).AnyTimes()
 
 	// Start Server.
 	server.Start()
 	time.Sleep(1 * time.Second)
+
 	// Initialize a websocket client.
 	u := url.URL{Scheme: "ws", Host: "127.0.0.1:8811", Path: "/ws"}
 	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
@@ -69,7 +72,7 @@ func TestServer(t *testing.T) {
 	}
 
 	// Test packet from client -> server.
-	mockInterface.EXPECT().Write([]byte{1, 3, 3}).Return(1, nil).Times(1)
+	mockInterface.EXPECT().Write([]byte{1, 3, 3}).Return(1, nil).AnyTimes()
 	if err = c.WriteMessage(websocket.BinaryMessage, []byte{1, 3, 3}); err != nil {
 		t.Error(err)
 	}
