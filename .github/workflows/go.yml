@@ -34,5 +34,8 @@ jobs:
     - name: Build Client
       run: go build -v ./examples/webtunclient.go ./examples/webtunclient_linux.go
       
-    - name: Test
+    - name: Test Client
       run: go test -v ./webtunnelclient/
+
+    - name: Test Server
+      run: go test -v ./webtunnelserver/
