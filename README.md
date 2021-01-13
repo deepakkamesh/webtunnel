@@ -1,3 +1,5 @@
+![Webtunnel](https://github.com/deepakkamesh/webtunnel/workflows/Webtunnel/badge.svg)
+
 # Webtunnel
 Webtunnel is a websocket based VPN with a client server architecture. This is useful in places where a firewall can restrict ports/protocol other than HTTP
 
