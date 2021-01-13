@@ -1,0 +1,34 @@
+name: Go
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: 1.15
+    - name: Install Deps
+      run: |
+        go get -u github.com/deepakkamesh/webtunnel/webtunnelserver
+        go get -u github.com/deepakkamesh/webtunnel/webtunnelcommon
+        go get -u github.com/golang/glog
+        go get -u github.com/google/gopacket
+        go get -u github.com/google/gopacket/layers
+        go get -u github.com/gorilla/websocket
+        go get -u github.com/songgao/water
+
+    - name: Build
+      run: go build -v ./examples/server.go
+
+    - name: Test
+      run: go test -v ./webtunnelclient/
