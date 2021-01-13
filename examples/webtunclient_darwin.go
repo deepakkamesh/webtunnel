@@ -1,3 +1,4 @@
+// webtunclient_darwin.go Darwin specific OS initialization for client.
 package main
 
 import (

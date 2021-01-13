@@ -9,6 +9,7 @@ import (
 	"github.com/golang/glog"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	"github.com/songgao/water"
 )
 
 const (
@@ -108,4 +109,9 @@ func GenMACAddr() net.HardwareAddr {
 	// Set the local bit
 	buf[0] = (buf[0] | 2) & 0xfe
 	return buf
+}
+
+// NewWaterInterface returns an initialized network interface.
+func NewWaterInterface(c water.Config) (Interface, error) {
+	return water.New(c)
 }

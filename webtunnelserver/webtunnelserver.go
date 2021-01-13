@@ -1,3 +1,7 @@
+/*
+webtunnelserver is the server side of webtunnel; a websocket based VPN server.
+See examples for implementation.
+*/
 package webtunnelserver
 
 import (
@@ -13,6 +17,9 @@ import (
 	"github.com/songgao/water"
 )
 
+var InitTunnel = initializeTunnel            // (Overridable) OS specific initialization.
+var NewWaterInterface = wc.NewWaterInterface // (Overridable) New initialized water interface.
+
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  4096,
 	WriteBufferSize: 4096,
@@ -24,10 +31,11 @@ type Metrics struct {
 	Bytes   int // bytes pushed.
 }
 
+// WebTunnelServer represents a webtunnel server struct.
 type WebTunnelServer struct {
 	serverIPPort    string                     // IP Port for binding on server.
 	ifce            wc.Interface               // Tunnel interface handle.
-	Conns           map[string]*websocket.Conn // Websocket connection.
+	conns           map[string]*websocket.Conn // Websocket connection.
 	routePrefix     []string                   // Route prefix for client config.
 	tunNetmask      string                     // Netmask for clients.
 	clientNetPrefix string                     // IP range for clients.
@@ -42,12 +50,27 @@ type WebTunnelServer struct {
 
 }
 
-// To override in testing.
-var InitTunnel = initializeTunnel
-var NewWaterInterface = func(c water.Config) (wc.Interface, error) {
-	return water.New(c)
-}
+/*
+NewWebTunnelServer returns an initialized webtunnel server.
 
+serverIPPort: IP:Port to listen for websocket connections.
+
+gwIP: TUN/TAP IP address of the server. Should be within clientNetPrefix (usually x.x.x.1).
+
+tunNetmask: Network mask of the VPN network.
+
+clientNetPrefix: Network prefix of the VPN network. (Used for IP address allocation)
+
+dnsIPs: IP address of DNS servers (for client configuration)
+
+routePrefix: Network prefix that the client should route via the tunnel.
+
+secure: Start server in websocket secure.
+
+httpsKeyFile: HTTPS Key File for secured connections.
+
+httpsCertFile: HTTPS Cert file for secured connections.
+*/
 func NewWebTunnelServer(serverIPPort, gwIP, tunNetmask, clientNetPrefix string, dnsIPs []string,
 	routePrefix []string, secure bool, httpsKeyFile string, httpsCertFile string) (*WebTunnelServer, error) {
 
@@ -74,7 +97,7 @@ func NewWebTunnelServer(serverIPPort, gwIP, tunNetmask, clientNetPrefix string, 
 	return &WebTunnelServer{
 		serverIPPort:    serverIPPort,
 		ifce:            ifce,
-		Conns:           make(map[string]*websocket.Conn),
+		conns:           make(map[string]*websocket.Conn),
 		routePrefix:     routePrefix,
 		tunNetmask:      tunNetmask,
 		clientNetPrefix: clientNetPrefix,
@@ -89,6 +112,7 @@ func NewWebTunnelServer(serverIPPort, gwIP, tunNetmask, clientNetPrefix string, 
 	}, nil
 }
 
+// Start the webtunnel server.
 func (r *WebTunnelServer) Start() {
 
 	// Start the HTTP Server.
@@ -104,6 +128,7 @@ func (r *WebTunnelServer) Start() {
 	go r.processTUNPacket()
 }
 
+// Stop the webtunnel server.
 func (r *WebTunnelServer) Stop() {
 }
 

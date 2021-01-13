@@ -1,3 +1,4 @@
+// server.go - Example webtunnel server implementation.
 package main
 
 import (
@@ -16,16 +17,15 @@ func main() {
 
 	flag.Parse()
 
-	routePrefix := []string{"172.16.0.1/32", "172.16.0.2/32"}
-	dnsIPs := []string{"8.8.8.8", "1.1.1."}
-
 	glog.Info("starting webtunnel server..")
 	server, err := webtunnelserver.NewWebTunnelServer(*listenAddr, "192.168.0.1",
-		"255.255.255.0", "192.168.0.0/24", dnsIPs, routePrefix, true, *httpsKeyFile, *httpsCertFile)
+		"255.255.255.0", "192.168.0.0/24", []string{"8.8.8.8", "8.8.1.1"},
+		[]string{"172.16.0.1/30"}, true, *httpsKeyFile, *httpsCertFile)
 	if err != nil {
 		glog.Fatalf("%s", err)
 	}
 	server.Start()
+
 	/*
 		glog.Info("starting DNS Forwarder..")
 		dns, err := webtunnelserver.NewDNSForwarder("192.168.0.1", 53)
@@ -45,8 +45,8 @@ func main() {
 			server.ResetMetrics()
 		}
 	}()
-	select {
-	case err := <-server.Error:
-		glog.Exitf("Shutting down server %v", err)
-	}
+
+	// server.Error has any unrecoverable errors that can be handled.
+	err = <-server.Error
+	glog.Exitf("Shutting down server %v", err)
 }

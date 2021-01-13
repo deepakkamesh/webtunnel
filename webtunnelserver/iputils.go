@@ -8,15 +8,17 @@ import (
 )
 
 const (
-	ipStatusRequested = 1
-	ipStatusInUse     = 2
+	ipStatusRequested = 1 // IP requested.
+	ipStatusInUse     = 2 // IP in use.
 )
 
+// ipData represents the data for each IP.
 type ipData struct {
 	ipStatus int
 	data     interface{}
 }
 
+// IPPam represents a IP address mgmt struct
 type IPPam struct {
 	prefix      string
 	allocations map[string]*ipData
@@ -27,6 +29,7 @@ type IPPam struct {
 	lock        sync.Mutex
 }
 
+// NewIPPam returns a new IPPam object.
 func NewIPPam(prefix string) (*IPPam, error) {
 
 	ip, ipnet, err := net.ParseCIDR(prefix)
@@ -54,12 +57,13 @@ func NewIPPam(prefix string) (*IPPam, error) {
 	return ippam, nil
 }
 
+// GetAllocatedCount returns the number of allocated IPs.
 func (i *IPPam) GetAllocatedCount() int {
 	return len(i.allocations)
 }
 
 // Acquire IP gets a free IP and marks the status as requested. SetIPactive should be called
-// to make the IP active.
+// to make the IP active. data can be used to store any data associated with the IP.
 func (i *IPPam) AcquireIP(data interface{}) (string, error) {
 	i.lock.Lock()
 	defer i.lock.Unlock()
@@ -76,6 +80,7 @@ func (i *IPPam) AcquireIP(data interface{}) (string, error) {
 	return "", fmt.Errorf("IPs exhausted")
 }
 
+// SetIPActive marks the IP as in use. IP is not considered active until this function is called.
 func (i *IPPam) SetIPActive(ip string) error {
 	i.lock.Lock()
 	defer i.lock.Unlock()
@@ -87,6 +92,7 @@ func (i *IPPam) SetIPActive(ip string) error {
 	return nil
 }
 
+// GetData returns the data associated with the IP.
 func (i *IPPam) GetData(ip string) (interface{}, error) {
 	i.lock.Lock()
 	defer i.lock.Unlock()
@@ -97,6 +103,7 @@ func (i *IPPam) GetData(ip string) (interface{}, error) {
 	return i.allocations[ip].data, nil
 }
 
+// ReleaseIP returns IP address back to pool.
 func (i *IPPam) ReleaseIP(ip string) error {
 	i.lock.Lock()
 	defer i.lock.Unlock()

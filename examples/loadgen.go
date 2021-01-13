@@ -1,4 +1,4 @@
-// Runs multiple client connection to server to simulate multi client connections. Useful to test load
+// loadgen.go Runs multiple client connection to server to simulate multi client connections. Useful to test load
 // on server.
 package main
 

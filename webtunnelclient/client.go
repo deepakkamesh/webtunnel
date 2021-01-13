@@ -1,6 +1,7 @@
-// Package client runs the client side of the webtunnel. It establishes the
-//  the tunnel using a network interface.
-
+/*
+Package webtunnelclient runs the client side of the webtunnel; websocket based VPN.
+See examples for client implementation.
+*/
 package webtunnelclient
 
 import (
@@ -20,16 +21,20 @@ import (
 	"github.com/songgao/water"
 )
 
-// Interface represents the network interface.
+var NewWaterInterface = wc.NewWaterInterface // (Overridable) Return new water interface.
+var IsConfigured = wc.IsConfigured           // (Overridable) Check if network interface configured.
+var GetMacbyName = wc.GetMacbyName           // (Overridable) Get HW address.
+
+// Interface represents the network interface and its related configuration.
 type Interface struct {
 	IP           net.IP           // IP address.
 	GWIP         net.IP           // Gateway IP.
 	Netmask      net.IP           // Netmask of the interface.
 	DNS          []net.IP         // IP of DNS servers.
 	RoutePrefix  []*net.IPNet     // Route prefix to send via tunnel.
-	localHWAddr  net.HardwareAddr // MAC address of network interface.
-	gwHWAddr     net.HardwareAddr // fake MAC address of gateway.
-	leaseTime    uint32           // DHCP lease time.
+	LocalHWAddr  net.HardwareAddr // MAC address of network interface.
+	GWHWAddr     net.HardwareAddr // fake MAC address of gateway.
+	LeaseTime    uint32           // DHCP lease time.
 	wc.Interface                  // Interface to network.
 }
 
@@ -42,14 +47,21 @@ type WebtunnelClient struct {
 	wsWriteLock  sync.Mutex             // Lock for Websocket Writes.
 }
 
-// Overrides for testing.
-var NewWaterInterface = func(c water.Config) (wc.Interface, error) {
-	return water.New(c)
-}
-var IsConfigured = wc.IsConfigured
-var GetMacbyName = wc.GetMacbyName
+/*
+NewWebTunnelClient returns an initialized webtunnel client
 
-// NewWebTunnelClient returns an initialized webtunnel client.
+serverIPPort: IP:Port of the websocket server.
+
+wsDialer: Initialized websocket dialer with options.
+
+devType: Tun or Tap.
+
+f: User callback function for any OS initialization (eg. manual routes etc) mostly used in TUN.
+
+secure: Enable secure websocket connection
+
+leaseTime: If TAP, the DHCP lease time in seconds.
+*/
 func NewWebtunnelClient(serverIPPort string, wsDialer *websocket.Dialer,
 	devType water.DeviceType, f func(*Interface) error, secure bool, leaseTime uint32) (*WebtunnelClient, error) {
 
@@ -77,12 +89,13 @@ func NewWebtunnelClient(serverIPPort string, wsDialer *websocket.Dialer,
 		Error:  make(chan error),
 		ifce: &Interface{
 			Interface: handle,
-			leaseTime: leaseTime,
+			LeaseTime: leaseTime,
 		},
 		userInitFunc: f,
 	}, nil
 }
 
+// Start the client.
 func (w *WebtunnelClient) Start() error {
 
 	err := w.configureInterface()
@@ -124,7 +137,7 @@ func (w *WebtunnelClient) configureInterface() error {
 	w.ifce.Netmask = net.ParseIP(cfg.Netmask).To4()
 	w.ifce.DNS = dnsIPs
 	w.ifce.RoutePrefix = routes
-	w.ifce.gwHWAddr = wc.GenMACAddr()
+	w.ifce.GWHWAddr = wc.GenMACAddr()
 
 	// Call user supplied function for any OS initializations needed from cli.
 	// Depending on OS this might be bringing up OS or other network commands.
@@ -162,7 +175,7 @@ func (w *WebtunnelClient) processWSPacket() {
 		glog.V(1).Infof("Waiting for interface to be ready...")
 	}
 	// get the localHW addr only after network interface is configured.
-	w.ifce.localHWAddr = GetMacbyName(w.ifce.Name())
+	w.ifce.LocalHWAddr = GetMacbyName(w.ifce.Name())
 	glog.V(1).Infof("Interface Ready.")
 
 	opts := gopacket.SerializeOptions{FixLengths: true, ComputeChecksums: true}
@@ -189,8 +202,8 @@ func (w *WebtunnelClient) processWSPacket() {
 			ipv4 := packet.Layer(layers.LayerTypeIPv4).(*layers.IPv4)
 
 			ethl := &layers.Ethernet{
-				SrcMAC:       w.ifce.gwHWAddr,
-				DstMAC:       w.ifce.localHWAddr,
+				SrcMAC:       w.ifce.GWHWAddr,
+				DstMAC:       w.ifce.LocalHWAddr,
 				EthernetType: layers.EthernetTypeIPv4,
 			}
 			buffer := gopacket.NewSerializeBuffer()
@@ -331,15 +344,15 @@ func (w *WebtunnelClient) handleDHCP(packet gopacket.Packet) error {
 
 	switch msgType {
 	case layers.DHCPMsgTypeDiscover:
-		dhcpl.Options = w.buildDHCPopts(w.ifce.leaseTime, layers.DHCPMsgTypeOffer)
+		dhcpl.Options = w.buildDHCPopts(w.ifce.LeaseTime, layers.DHCPMsgTypeOffer)
 
 	case layers.DHCPMsgTypeRequest:
 		// If the requested/client IP is not the same as from the config force a NAK
 		// to start the discovery process again.
 		if bytes.Compare(reqIP, w.ifce.IP) == 0 || bytes.Compare(dhcp.ClientIP, w.ifce.IP) == 0 {
-			dhcpl.Options = w.buildDHCPopts(w.ifce.leaseTime, layers.DHCPMsgTypeAck)
+			dhcpl.Options = w.buildDHCPopts(w.ifce.LeaseTime, layers.DHCPMsgTypeAck)
 		} else {
-			dhcpl.Options = w.buildDHCPopts(w.ifce.leaseTime, layers.DHCPMsgTypeNak)
+			dhcpl.Options = w.buildDHCPopts(w.ifce.LeaseTime, layers.DHCPMsgTypeNak)
 		}
 
 	case layers.DHCPMsgTypeRelease:
@@ -349,7 +362,7 @@ func (w *WebtunnelClient) handleDHCP(packet gopacket.Packet) error {
 	// Construct and send DHCP Packet.
 	opts := gopacket.SerializeOptions{FixLengths: true, ComputeChecksums: true}
 	ethl := &layers.Ethernet{
-		SrcMAC:       w.ifce.gwHWAddr,
+		SrcMAC:       w.ifce.GWHWAddr,
 		DstMAC:       net.HardwareAddr{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF},
 		EthernetType: layers.EthernetTypeIPv4,
 	}
@@ -397,13 +410,13 @@ func (w *WebtunnelClient) handleArp(packet gopacket.Packet) error {
 		HwAddressSize:     arp.HwAddressSize,
 		ProtAddressSize:   arp.ProtAddressSize,
 		Operation:         layers.ARPReply,
-		SourceHwAddress:   w.ifce.gwHWAddr,
+		SourceHwAddress:   w.ifce.GWHWAddr,
 		SourceProtAddress: arp.DstProtAddress,
 		DstHwAddress:      arp.SourceHwAddress,
 		DstProtAddress:    arp.SourceProtAddress,
 	}
 	ethl := &layers.Ethernet{
-		SrcMAC:       w.ifce.gwHWAddr,
+		SrcMAC:       w.ifce.GWHWAddr,
 		DstMAC:       eth.SrcMAC,
 		EthernetType: layers.EthernetTypeARP,
 	}
