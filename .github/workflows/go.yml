@@ -28,10 +28,11 @@ jobs:
         go get -u github.com/songgao/water
         go get -u github.com/golang/mock/gomock
 
-    - name: Build
-      run: | 
-      go build -v ./examples/server.go
-      go build -v ./examples/webtunclient.go ./examples/webtunclient_linux.go
+    - name: Build Server
+      run: go build -v ./examples/server.go
 
+    - name: Build Client
+      run: go build -v ./examples/webtunclient.go ./examples/webtunclient_linux.go
+      
     - name: Test
       run: go test -v ./webtunnelclient/
