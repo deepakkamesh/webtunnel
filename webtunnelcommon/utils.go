@@ -1,4 +1,4 @@
-/* webtunnelcommon package has common utils/structs for client/server */
+/* Package webtunnelcommon package has common utils/structs for client/server */
 package webtunnelcommon
 
 import (
@@ -102,7 +102,7 @@ func IsConfigured(ifName string, ip string) bool {
 	return false
 }
 
-// Generate a random private MAC address for GW server to handle ARP etc.
+// GenMacAddr generate a random private MAC address for GW server to handle ARP etc.
 func GenMACAddr() net.HardwareAddr {
 	buf := make([]byte, 6)
 	rand.Read(buf)
