@@ -17,6 +17,15 @@ jobs:
       uses: actions/setup-go@v2
       with:
         go-version: 1.15
+    - name: Install Deps
+      run: |
+        go get -u github.com/deepakkamesh/webtunnel/webtunnelserver
+        go get -u github.com/deepakkamesh/webtunnel/webtunnelcommon
+        go get -u github.com/golang/glog
+        go get -u github.com/google/gopacket
+        go get -u github.com/google/gopacket/layers
+        go get -u github.com/gorilla/websocket
+        go get -u github.com/songgao/water
 
     - name: Build
       run: go build -v ./examples/server.go
