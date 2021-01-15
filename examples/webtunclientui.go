@@ -319,7 +319,7 @@ func layout(g *gocui.Gui) error {
 		}
 		v.Title = "Keyboard Shortcuts"
 		v.Wrap = true
-		fmt.Fprintln(v, "<Ctrl+X> - Exit | <Ctrl+D> - Disconnect |  ArrowUp/ArrowDown - Move up/down | Enter - Connect")
+		fmt.Fprintln(v, "<Ctrl+X> - Exit | <Ctrl+D> - Disconnect |  Arrow Up/Down - Move Up/Down | Enter - Connect")
 		fmt.Fprintln(v, " TAB - Switch between Server / Options")
 	}
 
