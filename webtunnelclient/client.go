@@ -7,9 +7,11 @@ package webtunnelclient
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
+	"os"
 	"sync"
 	"time"
 
@@ -40,11 +42,19 @@ type Interface struct {
 
 // WebtunnelClient represents the client struct.
 type WebtunnelClient struct {
-	wsconn       *websocket.Conn        // Websocket connection.
 	Error        chan error             // Channel to handle errors from goroutines.
+	isNetReady   bool                   // when network interface is ready.
+	wsconn       *websocket.Conn        // Websocket connection.
 	ifce         *Interface             // Struct to hold interface configuration.
 	userInitFunc func(*Interface) error // User supplied callback for OS initialization.
 	wsWriteLock  sync.Mutex             // Lock for Websocket Writes.
+	packetCnt    int                    // Count of packets.
+	bytesCnt     int                    // Count of bytes.
+	serverIPPort string                 // Websocket serverIP:Port.
+	wsDialer     *websocket.Dialer      // websocket dialer with options.
+	devType      water.DeviceType       // TUN/TAP.
+	scheme       string                 // Websocket Scheme.
+	leaseTime    uint32                 // DHCP lease time.
 }
 
 /*
@@ -63,34 +73,22 @@ secure: Enable secure websocket connection
 leaseTime: If TAP, the DHCP lease time in seconds.
 */
 func NewWebtunnelClient(serverIPPort string, wsDialer *websocket.Dialer,
-	devType water.DeviceType, f func(*Interface) error, secure bool, leaseTime uint32) (*WebtunnelClient, error) {
+	devType water.DeviceType, f func(*Interface) error,
+	secure bool, leaseTime uint32) (*WebtunnelClient, error) {
 
-	// Initialize websocket connection.
 	scheme := "ws"
 	if secure {
 		scheme = "wss"
 	}
-	u := url.URL{Scheme: scheme, Host: serverIPPort, Path: "/ws"}
-	wsconn, _, err := wsDialer.Dial(u.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	// Initialize network interface.
-	handle, err := NewWaterInterface(water.Config{
-		DeviceType: devType,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("error creating int %s", err)
-	}
 
 	return &WebtunnelClient{
-		wsconn: wsconn,
-		Error:  make(chan error),
-		ifce: &Interface{
-			Interface: handle,
-			LeaseTime: leaseTime,
-		},
+		Error:        make(chan error),
+		isNetReady:   false,
+		serverIPPort: serverIPPort,
+		wsDialer:     wsDialer,
+		devType:      devType,
+		scheme:       scheme,
+		leaseTime:    leaseTime,
 		userInitFunc: f,
 	}, nil
 }
@@ -98,14 +96,47 @@ func NewWebtunnelClient(serverIPPort string, wsDialer *websocket.Dialer,
 // Start the client.
 func (w *WebtunnelClient) Start() error {
 
-	err := w.configureInterface()
+	// Connect to websocket connection.
+	u := url.URL{Scheme: w.scheme, Host: w.serverIPPort, Path: "/ws"}
+	wsconn, _, err := w.wsDialer.Dial(u.String(), nil)
 	if err != nil {
 		return err
 	}
+	w.wsconn = wsconn
+
+	// Start network interface.
+	handle, err := NewWaterInterface(water.Config{
+		DeviceType: w.devType,
+	})
+	if err != nil {
+		return fmt.Errorf("error creating int %s", err)
+	}
+	w.ifce = &Interface{
+		Interface: handle,
+		LeaseTime: w.leaseTime,
+	}
+
+	// Configure network interface.
+	err = w.configureInterface()
+	if err != nil {
+		return err
+	}
+
+	// Start packet processors.
 	go w.processNetPacket()
 	go w.processWSPacket()
 
 	return nil
+}
+
+// SetServer changes the websocket connection end point.
+func (w *WebtunnelClient) SetServer(serverIPPort string, secure bool) {
+	scheme := "ws"
+	if secure {
+		scheme = "wss"
+	}
+	w.serverIPPort = serverIPPort
+	w.scheme = scheme
 }
 
 // configureInterface retrieves the client configuration from server and sends to Net daemon.
@@ -150,6 +181,10 @@ func (w *WebtunnelClient) configureInterface() error {
 
 // Stop gracefully shutdowns the client after notifying the server.
 func (w *WebtunnelClient) Stop() error {
+	// If stop is called without start return.
+	if w.wsconn == nil || w.ifce == nil {
+		return nil
+	}
 	// Read Writes in websocket do not support concurrency.
 	w.wsWriteLock.Lock()
 	err := w.wsconn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
@@ -162,7 +197,25 @@ func (w *WebtunnelClient) Stop() error {
 	time.Sleep(time.Second)
 	w.wsconn.Close()
 	w.ifce.Close()
+	w.isNetReady = false
 	return nil
+}
+
+// ResetMetrics reset the internal counters.
+func (w *WebtunnelClient) ResetMetrics() {
+	w.packetCnt = 0
+	w.bytesCnt = 0
+}
+
+// GetMetrics returns the internal metrics.
+func (w *WebtunnelClient) GetMetrics() (int, int) {
+	return w.packetCnt, w.bytesCnt
+}
+
+// IsInterfaceReady returns true when the network interface is ready and configured
+// with the right IP address.
+func (w *WebtunnelClient) IsInterfaceReady() bool {
+	return w.isNetReady
 }
 
 // processWSPacket processes packets received from the Websocket connection and
@@ -178,6 +231,7 @@ func (w *WebtunnelClient) processWSPacket() {
 	// get the localHW addr only after network interface is configured.
 	w.ifce.LocalHWAddr = GetMacbyName(w.ifce.Name())
 	glog.V(1).Infof("Interface Ready.")
+	w.isNetReady = true
 
 	opts := gopacket.SerializeOptions{FixLengths: true, ComputeChecksums: true}
 
@@ -215,11 +269,17 @@ func (w *WebtunnelClient) processWSPacket() {
 		}
 
 		// Send packet to network interface.
-		if _, err := w.ifce.Write(pkt); err != nil {
+		n, err := w.ifce.Write(pkt)
+		if err != nil {
+			// Connection closed. Ignore.
+			if errors.Is(err, os.ErrClosed) {
+				return
+			}
 			w.Error <- fmt.Errorf("error writing to tunnel %s.", err)
 			return
 		}
-
+		w.packetCnt++
+		w.bytesCnt += n
 	}
 }
 
@@ -233,10 +293,17 @@ func (w *WebtunnelClient) processNetPacket() {
 		// Read from TUN/TAP network interface.
 		n, err := w.ifce.Read(pkt)
 		if err != nil {
+			// Connection closed. Ignore.
+			if errors.Is(err, os.ErrClosed) {
+				return
+			}
 			w.Error <- fmt.Errorf("error reading Tunnel %s. Sz:%v", err, n)
 			return
 		}
 		oPkt = pkt[:n]
+
+		w.packetCnt++
+		w.bytesCnt += n
 
 		// Special handling for TAP; ARP/DHCP.
 		if w.ifce.IsTAP() {
@@ -267,7 +334,7 @@ func (w *WebtunnelClient) processNetPacket() {
 		err = w.wsconn.WriteMessage(websocket.BinaryMessage, oPkt)
 		w.wsWriteLock.Unlock()
 		if err != nil {
-			if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
+			if websocket.IsCloseError(err, websocket.CloseNormalClosure) || err == websocket.ErrCloseSent {
 				return
 			}
 			w.Error <- fmt.Errorf("error writing to websocket: %s", err)
