@@ -161,6 +161,7 @@ func (w *WebtunnelClient) Stop() error {
 	// Otherwise its seen as a abnormal closure and will result in error.
 	time.Sleep(time.Second)
 	w.wsconn.Close()
+	w.ifce.Close()
 	return nil
 }
 
