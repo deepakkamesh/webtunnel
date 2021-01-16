@@ -130,13 +130,14 @@ func (w *WebtunnelClient) Start() error {
 }
 
 // SetServer changes the websocket connection end point.
-func (w *WebtunnelClient) SetServer(serverIPPort string, secure bool) {
+func (w *WebtunnelClient) SetServer(serverIPPort string, secure bool, wsDialer *websocket.Dialer) {
 	scheme := "ws"
 	if secure {
 		scheme = "wss"
 	}
 	w.serverIPPort = serverIPPort
 	w.scheme = scheme
+	w.wsDialer = wsDialer
 }
 
 // configureInterface retrieves the client configuration from server and sends to Net daemon.
