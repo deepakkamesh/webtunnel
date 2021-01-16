@@ -455,6 +455,9 @@ func (w *WebtunnelClient) handleDHCP(packet gopacket.Packet) error {
 	}
 	wc.PrintPacketEth(buffer.Bytes(), "DHCP Reply")
 	if _, err := w.ifce.Write(buffer.Bytes()); err != nil {
+		if errors.Is(err, os.ErrClosed) || errors.Is(err, os.ErrInvalid) {
+			return nil
+		}
 		return err
 	}
 
@@ -497,6 +500,9 @@ func (w *WebtunnelClient) handleArp(packet gopacket.Packet) error {
 	}
 	wc.PrintPacketEth(buffer.Bytes(), "ARP Response")
 	if _, err := w.ifce.Write(buffer.Bytes()); err != nil {
+		if errors.Is(err, os.ErrClosed) || errors.Is(err, os.ErrInvalid) {
+			return nil
+		}
 		return err
 	}
 	return nil
