@@ -273,7 +273,7 @@ func (w *WebtunnelClient) processWSPacket() {
 		n, err := w.ifce.Write(pkt)
 		if err != nil {
 			// Connection closed. Ignore.
-			if errors.Is(err, os.ErrClosed) {
+			if errors.Is(err, os.ErrClosed) || errors.Is(err, os.ErrInvalid) {
 				return
 			}
 			w.Error <- fmt.Errorf("error writing to tunnel %s.", err)
@@ -295,7 +295,7 @@ func (w *WebtunnelClient) processNetPacket() {
 		n, err := w.ifce.Read(pkt)
 		if err != nil {
 			// Connection closed. Ignore.
-			if errors.Is(err, os.ErrClosed) {
+			if errors.Is(err, os.ErrClosed) || errors.Is(err, os.ErrInvalid) {
 				return
 			}
 			w.Error <- fmt.Errorf("error reading Tunnel %s. Sz:%v", err, n)
