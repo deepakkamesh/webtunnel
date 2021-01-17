@@ -7,11 +7,9 @@ package webtunnelclient
 import (
 	"bytes"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"net"
 	"net/url"
-	"os"
 	"sync"
 	"time"
 
@@ -43,7 +41,8 @@ type Interface struct {
 // WebtunnelClient represents the client struct.
 type WebtunnelClient struct {
 	Error        chan error             // Channel to handle errors from goroutines.
-	isNetReady   bool                   // when network interface is ready.
+	isNetReady   bool                   // true when network interface is ready.
+	isStopped    bool                   // True when Stop() called.
 	wsconn       *websocket.Conn        // Websocket connection.
 	ifce         *Interface             // Struct to hold interface configuration.
 	userInitFunc func(*Interface) error // User supplied callback for OS initialization.
@@ -84,6 +83,7 @@ func NewWebtunnelClient(serverIPPort string, wsDialer *websocket.Dialer,
 	return &WebtunnelClient{
 		Error:        make(chan error),
 		isNetReady:   false,
+		isStopped:    false,
 		serverIPPort: serverIPPort,
 		wsDialer:     wsDialer,
 		devType:      devType,
@@ -95,6 +95,8 @@ func NewWebtunnelClient(serverIPPort string, wsDialer *websocket.Dialer,
 
 // Start the client.
 func (w *WebtunnelClient) Start() error {
+	// isStopped is set true in Stop(). Used to gracefully exit packet processors.
+	w.isStopped = false
 
 	// Connect to websocket connection.
 	u := url.URL{Scheme: w.scheme, Host: w.serverIPPort, Path: "/ws"}
@@ -193,6 +195,7 @@ func (w *WebtunnelClient) Stop() error {
 	if err != nil {
 		return err
 	}
+	w.isStopped = true
 	// Wait for some time for server to terminate conn before closing on client end.
 	// Otherwise its seen as a abnormal closure and will result in error.
 	time.Sleep(time.Second)
@@ -240,7 +243,8 @@ func (w *WebtunnelClient) processWSPacket() {
 		// Read packet from websocket.
 		mt, pkt, err := w.wsconn.ReadMessage()
 		if err != nil {
-			if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
+			// Gracefully exit goroutine.
+			if w.isStopped {
 				return
 			}
 			w.Error <- fmt.Errorf("error reading websocket %s", err)
@@ -272,8 +276,8 @@ func (w *WebtunnelClient) processWSPacket() {
 		// Send packet to network interface.
 		n, err := w.ifce.Write(pkt)
 		if err != nil {
-			// Connection closed. Ignore.
-			if errors.Is(err, os.ErrClosed) || errors.Is(err, os.ErrInvalid) {
+			// Gracefully exit goroutine.
+			if w.isStopped {
 				return
 			}
 			w.Error <- fmt.Errorf("error writing to tunnel %s.", err)
@@ -294,8 +298,8 @@ func (w *WebtunnelClient) processNetPacket() {
 		// Read from TUN/TAP network interface.
 		n, err := w.ifce.Read(pkt)
 		if err != nil {
-			// Connection closed. Ignore.
-			if errors.Is(err, os.ErrClosed) || errors.Is(err, os.ErrInvalid) {
+			// Gracefully exit goroutine.
+			if w.isStopped {
 				return
 			}
 			w.Error <- fmt.Errorf("error reading Tunnel %s. Sz:%v", err, n)
@@ -335,7 +339,8 @@ func (w *WebtunnelClient) processNetPacket() {
 		err = w.wsconn.WriteMessage(websocket.BinaryMessage, oPkt)
 		w.wsWriteLock.Unlock()
 		if err != nil {
-			if websocket.IsCloseError(err, websocket.CloseNormalClosure) || err == websocket.ErrCloseSent {
+			// Gracefully exit goroutine.
+			if w.isStopped {
 				return
 			}
 			w.Error <- fmt.Errorf("error writing to websocket: %s", err)
@@ -455,7 +460,8 @@ func (w *WebtunnelClient) handleDHCP(packet gopacket.Packet) error {
 	}
 	wc.PrintPacketEth(buffer.Bytes(), "DHCP Reply")
 	if _, err := w.ifce.Write(buffer.Bytes()); err != nil {
-		if errors.Is(err, os.ErrClosed) || errors.Is(err, os.ErrInvalid) {
+		// Gracefully exit goroutine.
+		if w.isStopped {
 			return nil
 		}
 		return err
@@ -500,7 +506,8 @@ func (w *WebtunnelClient) handleArp(packet gopacket.Packet) error {
 	}
 	wc.PrintPacketEth(buffer.Bytes(), "ARP Response")
 	if _, err := w.ifce.Write(buffer.Bytes()); err != nil {
-		if errors.Is(err, os.ErrClosed) || errors.Is(err, os.ErrInvalid) {
+		// Gracefully exit goroutine.
+		if w.isStopped {
 			return nil
 		}
 		return err
