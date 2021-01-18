@@ -95,8 +95,6 @@ func NewWebtunnelClient(serverIPPort string, wsDialer *websocket.Dialer,
 
 // Start the client.
 func (w *WebtunnelClient) Start() error {
-	// isStopped is set true in Stop(). Used to gracefully exit packet processors.
-	w.isStopped = false
 
 	// Connect to websocket connection.
 	u := url.URL{Scheme: w.scheme, Host: w.serverIPPort, Path: "/ws"}
@@ -123,6 +121,9 @@ func (w *WebtunnelClient) Start() error {
 	if err != nil {
 		return err
 	}
+
+	// isStopped is set true in Stop(). Used to gracefully exit packet processors.
+	w.isStopped = false
 
 	// Start packet processors.
 	go w.processNetPacket()
