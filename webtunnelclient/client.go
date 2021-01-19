@@ -185,6 +185,10 @@ func (w *WebtunnelClient) configureInterface() error {
 
 // Stop gracefully shutdowns the client after notifying the server.
 func (w *WebtunnelClient) Stop() error {
+
+	w.isNetReady = false
+	w.isStopped = true
+
 	// If stop is called without start return.
 	if w.wsconn == nil || w.ifce == nil {
 		return nil
@@ -196,13 +200,11 @@ func (w *WebtunnelClient) Stop() error {
 	if err != nil {
 		return err
 	}
-	w.isStopped = true
 	// Wait for some time for server to terminate conn before closing on client end.
 	// Otherwise its seen as a abnormal closure and will result in error.
 	time.Sleep(time.Second)
 	w.wsconn.Close()
 	w.ifce.Close()
-	w.isNetReady = false
 	return nil
 }
 
