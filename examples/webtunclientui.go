@@ -316,7 +316,7 @@ func layout(g *gocui.Gui) error {
 		v.BgColor = gocui.ColorBlack
 		v.SelBgColor = gocui.ColorGreen
 		v.SelFgColor = gocui.ColorBlack
-		fmt.Fprintln(v, "192.168.1.117:8811\nServer2")
+		fmt.Fprintln(v, "192.168.1.110:8811\nServer2")
 		if _, err := g.SetCurrentView("servers"); err != nil {
 			return err
 		}

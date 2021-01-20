@@ -271,7 +271,8 @@ func (w *WebtunnelClient) processWSPacket() {
 			}
 			buffer := gopacket.NewSerializeBuffer()
 			if err := gopacket.SerializeLayers(buffer, opts, ethl, ipv4, gopacket.Payload(ipv4.Payload)); err != nil {
-				glog.Errorf("error serializelayer %s", err)
+				glog.Warningf("error serializelayer %s", err)
+				continue
 			}
 			pkt = buffer.Bytes()
 		}
