@@ -213,7 +213,7 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 		if err != nil {
 			r.ipam.ReleaseIP(ip)
 			if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
-				glog.Infof("connection closed for %s", ip)
+				glog.V(1).Infof("connection closed for %s", ip)
 				return
 			}
 			glog.Warningf("error reading from websocket for %s: %s ", rcv.RemoteAddr, err)
