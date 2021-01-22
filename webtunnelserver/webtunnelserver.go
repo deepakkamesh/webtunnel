@@ -33,21 +33,21 @@ type Metrics struct {
 
 // WebTunnelServer represents a webtunnel server struct.
 type WebTunnelServer struct {
-	serverIPPort    string                     // IP Port for binding on server.
-	ifce            wc.Interface               // Tunnel interface handle.
-	conns           map[string]*websocket.Conn // Websocket connection.
-	routePrefix     []string                   // Route prefix for client config.
-	tunNetmask      string                     // Netmask for clients.
-	clientNetPrefix string                     // IP range for clients.
-	gwIP            string                     // Tunnel IP address of server.
-	ipam            *IPPam                     // Client IP Address manager.
-	httpsKeyFile    string                     // Key file for HTTPS.
-	httpsCertFile   string                     // Cert file for HTTPS.
-	Error           chan error                 // Channel to handle error from goroutine.
-	dnsIPs          []string                   // DNS server IPs.
-	metrics         *Metrics                   // Metrics.
-	secure          bool                       // Start Server with https.
-
+	serverIPPort       string                     // IP Port for binding on server.
+	ifce               wc.Interface               // Tunnel interface handle.
+	conns              map[string]*websocket.Conn // Websocket connection.
+	routePrefix        []string                   // Route prefix for client config.
+	tunNetmask         string                     // Netmask for clients.
+	clientNetPrefix    string                     // IP range for clients.
+	gwIP               string                     // Tunnel IP address of server.
+	ipam               *IPPam                     // Client IP Address manager.
+	httpsKeyFile       string                     // Key file for HTTPS.
+	httpsCertFile      string                     // Cert file for HTTPS.
+	Error              chan error                 // Channel to handle error from goroutine.
+	dnsIPs             []string                   // DNS server IPs.
+	metrics            *Metrics                   // Metrics.
+	secure             bool                       // Start Server with https.
+	customHTTPHandlers map[string]http.Handler    // Array of custom HTTP handlers.
 }
 
 /*
@@ -95,21 +95,31 @@ func NewWebTunnelServer(serverIPPort, gwIP, tunNetmask, clientNetPrefix string, 
 		return nil, err
 	}
 	return &WebTunnelServer{
-		serverIPPort:    serverIPPort,
-		ifce:            ifce,
-		conns:           make(map[string]*websocket.Conn),
-		routePrefix:     routePrefix,
-		tunNetmask:      tunNetmask,
-		clientNetPrefix: clientNetPrefix,
-		gwIP:            gwIP,
-		ipam:            ipam,
-		httpsKeyFile:    httpsKeyFile,
-		httpsCertFile:   httpsCertFile,
-		Error:           make(chan error),
-		dnsIPs:          dnsIPs,
-		metrics:         &Metrics{},
-		secure:          secure,
+		serverIPPort:       serverIPPort,
+		ifce:               ifce,
+		conns:              make(map[string]*websocket.Conn),
+		routePrefix:        routePrefix,
+		tunNetmask:         tunNetmask,
+		clientNetPrefix:    clientNetPrefix,
+		gwIP:               gwIP,
+		ipam:               ipam,
+		httpsKeyFile:       httpsKeyFile,
+		httpsCertFile:      httpsCertFile,
+		Error:              make(chan error),
+		dnsIPs:             dnsIPs,
+		metrics:            &Metrics{},
+		secure:             secure,
+		customHTTPHandlers: make(map[string]http.Handler),
 	}, nil
+}
+
+// SetCustomHandler sets any custom http end point handler. This should be called prior to Start.
+func (r *WebTunnelServer) SetCustomHandler(endpoint string, h http.Handler) error {
+	if endpoint == "/ws" {
+		return fmt.Errorf("cannot override ws handler")
+	}
+	r.customHTTPHandlers[endpoint] = h
+	return nil
 }
 
 // Start the webtunnel server.
@@ -118,6 +128,12 @@ func (r *WebTunnelServer) Start() {
 	// Start the HTTP Server.
 	http.HandleFunc("/", r.httpEndpoint)
 	http.HandleFunc("/ws", r.wsEndpoint)
+
+	// Start the custom handlers.
+	for e, h := range r.customHTTPHandlers {
+		http.Handle(e, h)
+	}
+
 	if r.secure {
 		go func() { log.Fatal(http.ListenAndServeTLS(r.serverIPPort, r.httpsCertFile, r.httpsKeyFile, nil)) }()
 	} else {

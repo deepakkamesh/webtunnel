@@ -3,11 +3,19 @@ package main
 
 import (
 	"flag"
+	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/deepakkamesh/webtunnel/webtunnelserver"
 	"github.com/golang/glog"
 )
+
+type myHandle struct{}
+
+func (h *myHandle) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprintln(w, "This is a custom Handler")
+}
 
 func main() {
 	// Get some flags.
@@ -24,16 +32,14 @@ func main() {
 	if err != nil {
 		glog.Fatalf("%s", err)
 	}
-	server.Start()
 
-	/*
-		glog.Info("starting DNS Forwarder..")
-		dns, err := webtunnelserver.NewDNSForwarder("192.168.0.1", 53)
-		if err != nil {
-			glog.Fatal(err)
-		}
-		dns.Start()
-	*/
+	// Set Custom HTTP Handlers if you want to handle any custom HTTP endpoints for additional functions.
+	if err := server.SetCustomHandler("/hello", new(myHandle)); err != nil {
+		glog.Exit(err)
+	}
+
+	// Start the server.
+	server.Start()
 
 	// Print Metrics.
 	t := time.NewTicker(30 * time.Second)
