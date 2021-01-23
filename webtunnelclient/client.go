@@ -21,13 +21,13 @@ import (
 	"github.com/songgao/water"
 )
 
-// (Overridable) Return new water interface.
+// NewWaterInterface (Overridable) Return new water interface.
 var NewWaterInterface = wc.NewWaterInterface
 
-// (Overridable) Check if network interface configured.
+// IsConfigured (Overridable) Check if network interface configured.
 var IsConfigured = wc.IsConfigured
 
-// (Overridable) Get HW address.
+// GetMacbyName (Overridable) Get HW address.
 var GetMacbyName = wc.GetMacbyName
 
 // Interface represents the network interface and its related configuration.

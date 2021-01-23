@@ -17,10 +17,10 @@ import (
 	"github.com/songgao/water"
 )
 
-// (Overridable) OS specific initialization.
+// InitTunnel (Overridable) OS specific initialization.
 var InitTunnel = initializeTunnel
 
-// (Overridable) New initialized water interface.
+// NewWaterInterface (Overridable) New initialized water interface.
 var NewWaterInterface = wc.NewWaterInterface
 
 var upgrader = websocket.Upgrader{
