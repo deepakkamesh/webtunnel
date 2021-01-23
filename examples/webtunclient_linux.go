@@ -5,7 +5,7 @@ import (
 	"github.com/deepakkamesh/webtunnel/webtunnelclient"
 )
 
-// initializeTunnel assigns IP to tunnel and sets up routing via tunnel.
+// InitializeOS assigns IP to tunnel and sets up routing via tunnel.
 func InitializeOS(cfg *webtunnelclient.Interface) error {
 	return nil
 }

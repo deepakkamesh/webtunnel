@@ -21,9 +21,14 @@ import (
 	"github.com/songgao/water"
 )
 
-var NewWaterInterface = wc.NewWaterInterface // (Overridable) Return new water interface.
-var IsConfigured = wc.IsConfigured           // (Overridable) Check if network interface configured.
-var GetMacbyName = wc.GetMacbyName           // (Overridable) Get HW address.
+// (Overridable) Return new water interface.
+var NewWaterInterface = wc.NewWaterInterface
+
+// (Overridable) Check if network interface configured.
+var IsConfigured = wc.IsConfigured
+
+// (Overridable) Get HW address.
+var GetMacbyName = wc.GetMacbyName
 
 // Interface represents the network interface and its related configuration.
 type Interface struct {
@@ -57,7 +62,7 @@ type WebtunnelClient struct {
 }
 
 /*
-NewWebTunnelClient returns an initialized webtunnel client
+NewWebtunnelClient returns an initialized webtunnel client
 
 serverIPPort: IP:Port of the websocket server.
 
@@ -167,7 +172,7 @@ func (w *WebtunnelClient) configureInterface() error {
 		}
 		routes = append(routes, n)
 	}
-	w.ifce.IP = net.ParseIP(cfg.Ip).To4()
+	w.ifce.IP = net.ParseIP(cfg.IP).To4()
 	w.ifce.GWIP = net.ParseIP(cfg.GWIp).To4()
 	w.ifce.Netmask = net.ParseIP(cfg.Netmask).To4()
 	w.ifce.DNS = dnsIPs
@@ -284,7 +289,7 @@ func (w *WebtunnelClient) processWSPacket() {
 			if w.isStopped {
 				return
 			}
-			w.Error <- fmt.Errorf("error writing to tunnel %s.", err)
+			w.Error <- fmt.Errorf("error writing to tunnel %s", err)
 			return
 		}
 		w.packetCnt++

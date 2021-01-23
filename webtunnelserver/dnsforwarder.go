@@ -9,10 +9,12 @@ import (
 	"github.com/google/gopacket/layers"
 )
 
+// DNSForwarder represents a DNS forwarder.
 type DNSForwarder struct {
 	handle *net.UDPConn
 }
 
+// NewDNSForwarder returns a new initialized DNS forwarder.
 func NewDNSForwarder(ip string, port int) (*DNSForwarder, error) {
 
 	h, err := net.ListenUDP("udp", &net.UDPAddr{Port: port, IP: net.ParseIP(ip)})
@@ -25,6 +27,7 @@ func NewDNSForwarder(ip string, port int) (*DNSForwarder, error) {
 	}, nil
 }
 
+// Start starts the dns forwarder.
 func (d *DNSForwarder) Start() {
 	go d.listenServ()
 }

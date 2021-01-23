@@ -1,3 +1,4 @@
+// webclientui.go - Demonstrates a client with a simple UI.
 package main
 
 import (
@@ -24,6 +25,7 @@ func main() {
 	}
 }
 
+// Clientui represents a client with UI.
 type Clientui struct {
 	ui              *gocui.Gui
 	webtunclient    *webtunnelclient.WebtunnelClient
@@ -31,6 +33,7 @@ type Clientui struct {
 	currView        int      // Current focused view.
 }
 
+// NewclientUI returns an initialized client.
 func NewclientUI() *Clientui {
 	// Initialize the GUI.
 	g, err := gocui.NewGui(gocui.OutputNormal)
@@ -53,6 +56,7 @@ func NewclientUI() *Clientui {
 	}
 }
 
+// InitUI initializes the UI.
 func (c *Clientui) InitUI() error {
 	c.ui.Cursor = true
 	c.ui.Mouse = true
@@ -63,6 +67,7 @@ func (c *Clientui) InitUI() error {
 	return nil
 }
 
+// Run starts the UI and the client.
 func (c *Clientui) Run() error {
 
 	// Goroutine to handle errors from webtun client and metrics.

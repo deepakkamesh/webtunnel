@@ -67,8 +67,8 @@ func TestServer(t *testing.T) {
 	if err := c.ReadJSON(cfg); err != nil {
 		t.Error(err)
 	}
-	if cfg.Ip != "192.168.0.2" {
-		t.Errorf("config failed want 192.168.0.2, got %s", cfg.Ip)
+	if cfg.IP != "192.168.0.2" {
+		t.Errorf("config failed want 192.168.0.2, got %s", cfg.IP)
 	}
 
 	// Test packet from server -> client.

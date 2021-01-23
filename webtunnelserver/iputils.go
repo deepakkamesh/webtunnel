@@ -62,7 +62,7 @@ func (i *IPPam) GetAllocatedCount() int {
 	return len(i.allocations)
 }
 
-// Acquire IP gets a free IP and marks the status as requested. SetIPactive should be called
+// AcquireIP gets a free IP and marks the status as requested. SetIPactive should be called
 // to make the IP active. data can be used to store any data associated with the IP.
 func (i *IPPam) AcquireIP(data interface{}) (string, error) {
 	i.lock.Lock()
@@ -118,7 +118,7 @@ func (i *IPPam) ReleaseIP(ip string) error {
 	return nil
 }
 
-// Acquires specific IP and marks it as in use.
+// AcquireSpecificIP acquires specific IP and marks it as in use.
 func (i *IPPam) AcquireSpecificIP(ip string, data interface{}) error {
 	i.lock.Lock()
 	defer i.lock.Unlock()

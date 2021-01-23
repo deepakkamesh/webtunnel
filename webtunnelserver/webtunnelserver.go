@@ -1,5 +1,5 @@
 /*
-webtunnelserver is the server side of webtunnel; a websocket based VPN server.
+Package webtunnelserver is the server side of webtunnel; a websocket based VPN server.
 See examples for implementation.
 */
 package webtunnelserver
@@ -17,14 +17,18 @@ import (
 	"github.com/songgao/water"
 )
 
-var InitTunnel = initializeTunnel            // (Overridable) OS specific initialization.
-var NewWaterInterface = wc.NewWaterInterface // (Overridable) New initialized water interface.
+// (Overridable) OS specific initialization.
+var InitTunnel = initializeTunnel
+
+// (Overridable) New initialized water interface.
+var NewWaterInterface = wc.NewWaterInterface
 
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  4096,
 	WriteBufferSize: 4096,
 }
 
+// Metrics is the system metrics structure.
 type Metrics struct {
 	Users   int // Total connected users.
 	Packets int // total packets.
@@ -224,7 +228,7 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 		case websocket.TextMessage: // Config message.
 			if string(message) == "getConfig" {
 				cfg := &wc.ClientConfig{
-					Ip:          ip,
+					IP:          ip,
 					Netmask:     r.tunNetmask,
 					RoutePrefix: r.routePrefix,
 					GWIp:        r.gwIP,

@@ -1,4 +1,4 @@
-/* Package webtunnelcommon package has common utils/structs for client/server */
+/*Package webtunnelcommon package has common utils/structs for client/server*/
 package webtunnelcommon
 
 import (
@@ -12,14 +12,9 @@ import (
 	"github.com/songgao/water"
 )
 
-const (
-	DiagLevelInfo  = 1
-	DiagLevelDebug = 2
-)
-
 // ClientConfig represents the struct to pass config from server to client.
 type ClientConfig struct {
-	Ip          string   `json:"ip"`          // IP address of client.
+	IP          string   `json:"ip"`          // IP address of client.
 	Netmask     string   `json:"netmask"`     // Netmask of interface.
 	RoutePrefix []string `json:"routeprefix"` // Network prefix to route.
 	GWIp        string   `json:"gwip"`        // Gateway IP address.
@@ -65,7 +60,7 @@ func GetIntCfg(name string) (net.HardwareAddr, []net.IP, error) {
 	return nil, nil, fmt.Errorf("not found")
 }
 
-// Get the mac address of the interface by name. eg. eth0.
+// GetMacbyName returns the mac address of the interface by name. eg. eth0.
 func GetMacbyName(name string) net.HardwareAddr {
 	ints, err := net.Interfaces()
 	if err != nil {
@@ -102,7 +97,7 @@ func IsConfigured(ifName string, ip string) bool {
 	return false
 }
 
-// GenMacAddr generate a random private MAC address for GW server to handle ARP etc.
+// GenMACAddr generate a random private MAC address for GW server to handle ARP etc.
 func GenMACAddr() net.HardwareAddr {
 	buf := make([]byte, 6)
 	rand.Read(buf)
