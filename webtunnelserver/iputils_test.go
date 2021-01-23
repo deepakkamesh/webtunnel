@@ -25,7 +25,7 @@ func TestIP(t *testing.T) {
 		t.Errorf("Should not release bcast address")
 	}
 
-	ip, err := ipam.AcquireIP(struct{}{})
+	ip, _ := ipam.AcquireIP(struct{}{})
 	if ip != "10.0.0.1" {
 		t.Errorf("Failed to acquire right IP expect: %s got:%s", "10.0.0.1", ip)
 	}
