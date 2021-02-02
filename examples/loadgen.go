@@ -87,7 +87,7 @@ func main() {
 		}
 
 		client, err := webtunnelclient.NewWebtunnelClient("192.168.1.117:8811", &wsDialer,
-			water.TUN, dummyInitFunc, true, 30)
+			false, dummyInitFunc, true, 30)
 		clients = append(clients, client)
 		if err != nil {
 			glog.Exitf("Failed to initialize client: %s", err)

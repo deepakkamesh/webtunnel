@@ -11,7 +11,6 @@ import (
 	"github.com/golang/glog"
 	"github.com/gorilla/websocket"
 	"github.com/jroimartin/gocui"
-	"github.com/songgao/water"
 )
 
 func main() {
@@ -43,7 +42,7 @@ func NewclientUI() *Clientui {
 
 	// Initialize the client.
 	client, err := webtunnelclient.NewWebtunnelClient("", &websocket.Dialer{},
-		water.TUN, InitializeOS, true, 30)
+		false, InitializeOS, true, 30)
 	if err != nil {
 		return nil
 	}

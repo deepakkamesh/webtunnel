@@ -77,12 +77,17 @@ secure: Enable secure websocket connection
 leaseTime: If TAP, the DHCP lease time in seconds.
 */
 func NewWebtunnelClient(serverIPPort string, wsDialer *websocket.Dialer,
-	devType water.DeviceType, f func(*Interface) error,
+	isTap bool, f func(*Interface) error,
 	secure bool, leaseTime uint32) (*WebtunnelClient, error) {
 
 	scheme := "ws"
 	if secure {
 		scheme = "wss"
+	}
+
+	devType := water.DeviceType(water.TUN)
+	if isTap {
+		devType = water.DeviceType(water.TAP)
 	}
 
 	return &WebtunnelClient{

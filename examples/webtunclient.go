@@ -11,7 +11,6 @@ import (
 	"github.com/deepakkamesh/webtunnel/webtunnelclient"
 	"github.com/golang/glog"
 	"github.com/gorilla/websocket"
-	"github.com/songgao/water"
 )
 
 func main() {
@@ -28,7 +27,7 @@ func main() {
 
 	// Initialize the client.
 	client, err := webtunnelclient.NewWebtunnelClient("192.168.1.117:8811", &wsDialer,
-		water.TUN, InitializeOS, true, 30)
+		false, InitializeOS, true, 30)
 	if err != nil {
 		glog.Exitf("Failed to initialize client: %s", err)
 	}

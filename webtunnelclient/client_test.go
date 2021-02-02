@@ -88,7 +88,7 @@ func TestClient(t *testing.T) {
 	mockClientIfce.EXPECT().IsTAP().Return(false).AnyTimes()
 
 	client, err := NewWebtunnelClient("127.0.0.1:8811", &wsDialer,
-		water.TUN, dummyInitFunc, false, 30)
+		false, dummyInitFunc, false, 30)
 	if err != nil {
 		t.Fatal(err)
 	}
