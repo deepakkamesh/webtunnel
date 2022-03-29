@@ -158,7 +158,7 @@ func (w *WebtunnelClient) SetServer(serverIPPort string, secure bool, wsDialer *
 // getUserInfo gets the username and hostname of the client
 func (w *WebtunnelClient) getUserInfo() (string, error) {
 
-	username, err := user.Current()
+	username, err := user.Current().Username
 	if err != nil {
 		return "", err
 	}
