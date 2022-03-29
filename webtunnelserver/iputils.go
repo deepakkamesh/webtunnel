@@ -80,9 +80,9 @@ func (i *IPPam) AcquireIP(data interface{}) (string, error) {
 	return "", fmt.Errorf("IPs exhausted")
 }
 
-// SetIPActiveWithUserAndHostname marks the IP as in use. IP is not considered active until this function is called.
+// SetIPActiveWithUserInfo marks the IP as in use. IP is not considered active until this function is called.
 // Also adds the username and hostname information associated with the IP connection.
-func (i *IPPam) SetIPActiveWithUserAndHostname(ip, username, hostname string) error {
+func (i *IPPam) SetIPActiveWithUserInfo(ip, username, hostname string) error {
 	i.lock.Lock()
 	defer i.lock.Unlock()
 
@@ -90,7 +90,7 @@ func (i *IPPam) SetIPActiveWithUserAndHostname(ip, username, hostname string) er
 		return fmt.Errorf("IP not available")
 	}
 	i.allocations[ip].ipStatus = ipStatusInUse
-	type UserInfo struct {
+	type UserInfo struct { // use anonymous struct for now
 		username, hostname string
 	}
 	i.allocations[ip].data = &UserInfo{
@@ -101,7 +101,7 @@ func (i *IPPam) SetIPActiveWithUserAndHostname(ip, username, hostname string) er
 }
 
 // SetIPActive marks the IP as in use. IP is not considered active until this function is called.
-// Deprecated: SetIPActiveWithUserAndHostname to be used instead
+// Deprecated: SetIPActiveWithUserInfo to be used instead
 func (i *IPPam) SetIPActive(ip string) error {
 	i.lock.Lock()
 	defer i.lock.Unlock()
@@ -137,6 +137,15 @@ func (i *IPPam) ReleaseIP(ip string) error {
 	}
 	delete(i.allocations, ip)
 	return nil
+}
+
+// DumpUsersInfo dumps current user and IP mapping in the log
+func (i *IPPam) DumpUsersInfo() {
+	i.lock.Lock()
+	defer i.lock.Unlock()
+	for k, v := range i.allocations {
+		glog.Warningf("IP: %v associated with: %v", k, v)
+	}
 }
 
 // AcquireSpecificIP acquires specific IP and marks it as in use.

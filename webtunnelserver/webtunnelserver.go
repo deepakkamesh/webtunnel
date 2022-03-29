@@ -231,13 +231,14 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 			if msg[0] == "getConfig" {
 				var username, hostname string
 				if len(msg) != 3 {
-					glog.Warningf("Cannot process username and hostname - marking them unknown")
+					glog.Warningf("Cannot process username and hostname - using defaults")
 					username = "guest"
-					hostname = "guest"
+					hostname = "workstation"
 				} else {
 					username = msg[1]
 					hostname = msg[2]
 				}
+				glog.Infof("Config request from %s@%s", username, hostname)
 				cfg := &wc.ClientConfig{
 					IP:          ip,
 					Netmask:     r.tunNetmask,
@@ -253,7 +254,7 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 				// when a client disconnects but still packets are available in buffer for its ip and a new
 				// client acquires its ip it cannot get the config as the TUN writer is still busy trying to send
 				// packets to it.
-				if err := r.ipam.SetIPActiveWithUserAndHostname(ip, username, hostname); err != nil {
+				if err := r.ipam.SetIPActiveWithUserInfo(ip, username, hostname); err != nil {
 					glog.Errorf("Unable to mark IP %v in use", ip)
 					return
 				}
@@ -281,6 +282,12 @@ func (r *WebTunnelServer) httpEndpoint(w http.ResponseWriter, rcv *http.Request)
 func (r *WebTunnelServer) GetMetrics() *Metrics {
 	r.metrics.Users = r.ipam.GetAllocatedCount()
 	return r.metrics
+}
+
+// DumpInfo logs useful information in the log if requested
+// This can be called using a custom Handler for debuging purpose
+func (r *WebTunnelServer) DumpInfo() *Metrics {
+	r.ipam.DumpUsersInfo()
 }
 
 // ResetMetrics resets the metrics on the server.

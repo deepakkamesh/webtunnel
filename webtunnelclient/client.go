@@ -155,7 +155,7 @@ func (w *WebtunnelClient) SetServer(serverIPPort string, secure bool, wsDialer *
 	w.wsDialer = wsDialer
 }
 
-// getUsernameHostname gets the username and hostname of the client
+// getUserInfo gets the username and hostname of the client
 func (w *WebtunnelClient) getUserInfo() (string, error) {
 
 	username, err := user.Current()
@@ -179,6 +179,7 @@ func (w *WebtunnelClient) configureInterface() error {
 		return err
 	}
 
+	
 	if err := w.wsconn.WriteMessage(websocket.TextMessage, []byte("getConfig"+" "+userinfo)); err != nil {
 		return err
 	}
