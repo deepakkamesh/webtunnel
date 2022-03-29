@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 
 	wc "github.com/deepakkamesh/webtunnel/webtunnelcommon"
 	"github.com/golang/glog"
@@ -226,7 +227,17 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 
 		switch mt {
 		case websocket.TextMessage: // Config message.
-			if string(message) == "getConfig" {
+			msg := strings.Split(message, " ")
+			if msg[0] == "getConfig" {
+				var username, hostname string
+				if len(msg) != 3 {
+					glog.Warningf("Cannot process username and hostname - marking them unknown")
+					username = "guest"
+					hostname = "guest"
+				} else {
+					username = msg[1]
+					hostname = msg[2]
+				}
 				cfg := &wc.ClientConfig{
 					IP:          ip,
 					Netmask:     r.tunNetmask,
@@ -242,7 +253,7 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 				// when a client disconnects but still packets are available in buffer for its ip and a new
 				// client acquires its ip it cannot get the config as the TUN writer is still busy trying to send
 				// packets to it.
-				if err := r.ipam.SetIPActive(ip); err != nil {
+				if err := r.ipam.SetIPActiveWithUserAndHostname(ip, username, hostname); err != nil {
 					glog.Errorf("Unable to mark IP %v in use", ip)
 					return
 				}

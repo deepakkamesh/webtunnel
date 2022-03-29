@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"os"
+	"os/user"
 	"sync"
 	"time"
 
@@ -153,10 +155,31 @@ func (w *WebtunnelClient) SetServer(serverIPPort string, secure bool, wsDialer *
 	w.wsDialer = wsDialer
 }
 
+// getUsernameHostname gets the username and hostname of the client
+func (w *WebtunnelClient) getUserInfo() (string, error) {
+
+	username, err := user.Current()
+	if err != nil {
+		return "", err
+	}
+
+	hostname, err := os.Hostname()
+	if err != nil {
+		return "", err
+	}
+	return username + " " + hostname, nil
+
+}
+
 // configureInterface retrieves the client configuration from server and sends to Net daemon.
 func (w *WebtunnelClient) configureInterface() error {
 	// Get configuration from server.
-	if err := w.wsconn.WriteMessage(websocket.TextMessage, []byte("getConfig")); err != nil {
+	userinfo, err := w.getUserInfo()
+	if err != nil {
+		return err
+	}
+
+	if err := w.wsconn.WriteMessage(websocket.TextMessage, []byte("getConfig"+" "+userinfo)); err != nil {
 		return err
 	}
 	cfg := &wc.ClientConfig{}

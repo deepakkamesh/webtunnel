@@ -80,7 +80,28 @@ func (i *IPPam) AcquireIP(data interface{}) (string, error) {
 	return "", fmt.Errorf("IPs exhausted")
 }
 
+// SetIPActiveWithUserAndHostname marks the IP as in use. IP is not considered active until this function is called.
+// Also adds the username and hostname information associated with the IP connection.
+func (i *IPPam) SetIPActiveWithUserAndHostname(ip, username, hostname string) error {
+	i.lock.Lock()
+	defer i.lock.Unlock()
+
+	if _, exists := i.allocations[ip]; !exists {
+		return fmt.Errorf("IP not available")
+	}
+	i.allocations[ip].ipStatus = ipStatusInUse
+	type UserInfo struct {
+		username, hostname string
+	}
+	i.allocations[ip].data = &UserInfo{
+		username: username,
+		hostname: hostname,
+	}
+	return nil
+}
+
 // SetIPActive marks the IP as in use. IP is not considered active until this function is called.
+// Deprecated: SetIPActiveWithUserAndHostname to be used instead
 func (i *IPPam) SetIPActive(ip string) error {
 	i.lock.Lock()
 	defer i.lock.Unlock()
