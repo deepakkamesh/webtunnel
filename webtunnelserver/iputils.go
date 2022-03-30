@@ -12,15 +12,16 @@ const (
 	ipStatusInUse     = 2 // IP in use.
 )
 
-// ipData represents the data for each IP.
-type ipData struct {
-	ipStatus int
-	data     interface{}
-}
-
 // UserInfo represents the user information associated with an IP
 type UserInfo struct {
 	username, hostname string
+}
+
+// ipData represents data associated for each IP.
+type ipData struct {
+	ipStatus int
+	data     interface{}
+	metadata *interface{}
 }
 
 // IPPam represents a IP address mgmt struct
@@ -147,7 +148,7 @@ func (i *IPPam) DumpAllocations() map[string]*UserInfo {
 	defer i.lock.Unlock()
 	allocations := make(map[string]*UserInfo)
 	for k, v := range i.allocations {
-		d := v.data
+		d := v.metadata
 		if d == nil {
 			continue
 		}
