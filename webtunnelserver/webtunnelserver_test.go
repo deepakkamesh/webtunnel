@@ -71,18 +71,17 @@ func TestServer(t *testing.T) {
 	allocations := server.DumpAllocations()
 	data := allocations["192.168.0.2"]
 
-	if data.username != "user"{
-		t.Errorf("Expected user, got: %v",data.username)
+	if data.username != "user" {
+		t.Errorf("Expected user, got: %v", data.username)
 	}
 
-	if data.hostname != "hostname"{
-		t.Errorf("Expected hostname, got: %v",data.hostname)
+	if data.hostname != "hostname" {
+		t.Errorf("Expected hostname, got: %v", data.hostname)
 	}
 
 	if cfg.IP != "192.168.0.2" {
 		t.Errorf("config failed want 192.168.0.2, got %s", cfg.IP)
 	}
-
 
 	// Test packet from server -> client.
 	_, b, err := c.ReadMessage()

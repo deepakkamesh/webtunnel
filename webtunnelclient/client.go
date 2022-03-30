@@ -179,7 +179,6 @@ func (w *WebtunnelClient) configureInterface() error {
 		return err
 	}
 
-	
 	if err := w.wsconn.WriteMessage(websocket.TextMessage, []byte("getConfig"+" "+userinfo)); err != nil {
 		return err
 	}

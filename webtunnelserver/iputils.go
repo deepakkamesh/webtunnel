@@ -145,13 +145,13 @@ func (i *IPPam) ReleaseIP(ip string) error {
 func (i *IPPam) DumpAllocations() map[string]*UserInfo {
 	i.lock.Lock()
 	defer i.lock.Unlock()
-	allocations  := make(map[string]*UserInfo)
+	allocations := make(map[string]*UserInfo)
 	for k, v := range i.allocations {
-		d:=v.data
+		d := v.data
 		if (d == nil) || (d == struct{}{}) {
 			continue
 		}
-		allocations[k]=d.(*UserInfo)
+		allocations[k] = d.(*UserInfo)
 	}
 	return allocations
 }
