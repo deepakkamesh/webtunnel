@@ -227,7 +227,7 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 
 		switch mt {
 		case websocket.TextMessage: // Config message.
-			msg := strings.Split(message, " ")
+			msg := strings.Split(string(message), " ")
 			if msg[0] == "getConfig" {
 				var username, hostname string
 				if len(msg) != 3 {
@@ -286,8 +286,8 @@ func (r *WebTunnelServer) GetMetrics() *Metrics {
 
 // DumpAllocations returns IP allocations information.
 // This can be called using a custom Handler for debuging purpose
-func (r *WebTunnelServer) DumpAllocations() *Metrics {
-	r.ipam.DumpAllocations()
+func (r *WebTunnelServer) DumpAllocations() map[string]*ipData {
+	return r.ipam.DumpAllocations()
 }
 
 // ResetMetrics resets the metrics on the server.
