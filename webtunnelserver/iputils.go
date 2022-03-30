@@ -20,8 +20,8 @@ type UserInfo struct {
 // ipData represents data associated for each IP.
 type ipData struct {
 	ipStatus int
-	data     interface{}
-	metadata *interface{}
+	data     interface{} // This field will point to the Websocket Connection object mapped to the IP
+	userinfo *UserInfo   // This field will be associated to the UserInfo object mapped to the IP
 }
 
 // IPPam represents a IP address mgmt struct
@@ -148,14 +148,11 @@ func (i *IPPam) DumpAllocations() map[string]*UserInfo {
 	defer i.lock.Unlock()
 	allocations := make(map[string]*UserInfo)
 	for k, v := range i.allocations {
-		d := v.metadata
+		d := v.userinfo
 		if d == nil {
 			continue
 		}
-		value, ok := d.(*UserInfo)
-		if ok {
-			allocations[k] = value
-		}
+		allocations[k] = d		
 	}
 	return allocations
 }
