@@ -141,7 +141,7 @@ func (i *IPPam) ReleaseIP(ip string) error {
 	return nil
 }
 
-// DumpUsersInfo dumps current user and IP mapping in the log
+// DumpUsersInfo returns the current IP mapping and user information
 func (i *IPPam) DumpAllocations() map[string]*UserInfo {
 	i.lock.Lock()
 	defer i.lock.Unlock()
