@@ -18,6 +18,11 @@ type ipData struct {
 	data     interface{}
 }
 
+// UserInfo represents the user information associated with an IP
+type UserInfo struct {
+	username, hostname string
+}
+
 // IPPam represents a IP address mgmt struct
 type IPPam struct {
 	prefix      string
@@ -90,9 +95,6 @@ func (i *IPPam) SetIPActiveWithUserInfo(ip, username, hostname string) error {
 		return fmt.Errorf("IP not available")
 	}
 	i.allocations[ip].ipStatus = ipStatusInUse
-	type UserInfo struct { // use anonymous struct for now
-		username, hostname string
-	}
 	i.allocations[ip].data = &UserInfo{
 		username: username,
 		hostname: hostname,
@@ -140,10 +142,18 @@ func (i *IPPam) ReleaseIP(ip string) error {
 }
 
 // DumpUsersInfo dumps current user and IP mapping in the log
-func (i *IPPam) DumpAllocations() map[string]*ipData {
+func (i *IPPam) DumpAllocations() map[string]*UserInfo {
 	i.lock.Lock()
 	defer i.lock.Unlock()
-	return i.allocations
+	allocations  := make(map[string]*UserInfo)
+	for k, v := range i.allocations {
+		d:=v.data
+		if (d == nil) || (d == struct{}{}) {
+			continue
+		}
+		allocations[k]=d.(*UserInfo)
+	}
+	return allocations
 }
 
 // AcquireSpecificIP acquires specific IP and marks it as in use.

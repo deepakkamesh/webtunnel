@@ -286,7 +286,7 @@ func (r *WebTunnelServer) GetMetrics() *Metrics {
 
 // DumpAllocations returns IP allocations information.
 // This can be called using a custom Handler for debuging purpose
-func (r *WebTunnelServer) DumpAllocations() map[string]*ipData {
+func (r *WebTunnelServer) DumpAllocations() map[string]*UserInfo {
 	return r.ipam.DumpAllocations()
 }
 
