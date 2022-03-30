@@ -148,6 +148,9 @@ func (i *IPPam) DumpAllocations() map[string]*UserInfo {
 	allocations := make(map[string]*UserInfo)
 	for k, v := range i.allocations {
 		d := v.data
+		if d == nil {
+			continue
+		}
 		value, ok := d.(*UserInfo)
 		if ok {
 			allocations[k] = value
