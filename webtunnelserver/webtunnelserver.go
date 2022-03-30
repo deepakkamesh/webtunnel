@@ -284,10 +284,10 @@ func (r *WebTunnelServer) GetMetrics() *Metrics {
 	return r.metrics
 }
 
-// DumpInfo logs useful information in the log if requested
+// DumpAllocations returns IP allocations information.
 // This can be called using a custom Handler for debuging purpose
-func (r *WebTunnelServer) DumpInfo() *Metrics {
-	r.ipam.DumpUsersInfo()
+func (r *WebTunnelServer) DumpAllocations() *Metrics {
+	r.ipam.DumpAllocations()
 }
 
 // ResetMetrics resets the metrics on the server.

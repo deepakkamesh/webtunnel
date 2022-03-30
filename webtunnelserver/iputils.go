@@ -140,12 +140,10 @@ func (i *IPPam) ReleaseIP(ip string) error {
 }
 
 // DumpUsersInfo dumps current user and IP mapping in the log
-func (i *IPPam) DumpUsersInfo() {
+func (i *IPPam) DumpAllocations() map[string]*ipData {
 	i.lock.Lock()
 	defer i.lock.Unlock()
-	for k, v := range i.allocations {
-		glog.Warningf("IP: %v associated with: %v", k, v)
-	}
+	return i.allocations
 }
 
 // AcquireSpecificIP acquires specific IP and marks it as in use.
