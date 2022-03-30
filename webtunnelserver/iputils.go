@@ -96,7 +96,7 @@ func (i *IPPam) SetIPActiveWithUserInfo(ip, username, hostname string) error {
 		return fmt.Errorf("IP not available")
 	}
 	i.allocations[ip].ipStatus = ipStatusInUse
-	i.allocations[ip].data = &UserInfo{
+	i.allocations[ip].userinfo = &UserInfo{
 		username: username,
 		hostname: hostname,
 	}
