@@ -20,7 +20,8 @@ type UserInfo struct {
 // ipData represents the data for each IP.
 type ipData struct {
 	ipStatus int
-	data     interface{}
+	data     interface{} // This field will point to the Websocket Connection object mapped to the IP
+	userinfo *UserInfo   // This field will be associated to the UserInfo object mapped to the IP
 }
 
 // IPPam represents a IP address mgmt struct
@@ -85,7 +86,25 @@ func (i *IPPam) AcquireIP(data interface{}) (string, error) {
 	return "", fmt.Errorf("IPs exhausted")
 }
 
+// SetIPActiveWithUserInfo marks the IP as in use. IP is not considered active until this function is called.
+// Also adds the username and hostname information associated with the IP connection.
+func (i *IPPam) SetIPActiveWithUserInfo(ip, username, hostname string) error {
+	i.lock.Lock()
+	defer i.lock.Unlock()
+
+	if _, exists := i.allocations[ip]; !exists {
+		return fmt.Errorf("IP not available")
+	}
+	i.allocations[ip].ipStatus = ipStatusInUse
+	i.allocations[ip].userinfo = &UserInfo{
+		username: username,
+		hostname: hostname,
+	}
+	return nil
+}
+
 // SetIPActive marks the IP as in use. IP is not considered active until this function is called.
+// Deprecated: SetIPActiveWithUserInfo to be used instead
 func (i *IPPam) SetIPActive(ip string) error {
 	i.lock.Lock()
 	defer i.lock.Unlock()
@@ -121,6 +140,21 @@ func (i *IPPam) ReleaseIP(ip string) error {
 	}
 	delete(i.allocations, ip)
 	return nil
+}
+
+// DumpUsersInfo returns the current IP mapping and user information
+func (i *IPPam) DumpAllocations() map[string]*UserInfo {
+	i.lock.Lock()
+	defer i.lock.Unlock()
+	allocations := make(map[string]*UserInfo)
+	for k, v := range i.allocations {
+		d := v.userinfo
+		if d == nil {
+			continue
+		}
+		allocations[k] = d		
+	}
+	return allocations
 }
 
 // AcquireSpecificIP acquires specific IP and marks it as in use.
