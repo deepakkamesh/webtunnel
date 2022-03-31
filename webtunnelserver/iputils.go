@@ -12,6 +12,11 @@ const (
 	ipStatusInUse     = 2 // IP in use.
 )
 
+// UserInfo represents the user information associated with an IP
+type UserInfo struct {
+	username, hostname string
+}
+
 // ipData represents the data for each IP.
 type ipData struct {
 	ipStatus int
