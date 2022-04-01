@@ -12,13 +12,19 @@ import (
 	"github.com/songgao/water"
 )
 
+// ServerInfo represents the struct provided to the client for debuging purpose
+type ServerInfo struct {
+	hostname	string `json::server` // for now only provide gw hostname to client
+}
+
 // ClientConfig represents the struct to pass config from server to client.
 type ClientConfig struct {
-	IP          string   `json:"ip"`          // IP address of client.
-	Netmask     string   `json:"netmask"`     // Netmask of interface.
-	RoutePrefix []string `json:"routeprefix"` // Network prefix to route.
-	GWIp        string   `json:"gwip"`        // Gateway IP address.
-	DNS         []string `json:"dns"`         // DNS IPs
+	IP          string   `json:"ip"`           // IP address of client.
+	Netmask     string   `json:"netmask"`      // Netmask of interface.
+	RoutePrefix []string `json:"routeprefix"`  // Network prefix to route.
+	GWIp        string   `json:"gwip"`         // Gateway IP address.
+	DNS         []string `json:"dns"`          // DNS IPs
+	ServerInfo	ServerInfo `json:"serverinfo"` // Server Information for debug or troubleshooting
 }
 
 // PrintPacketIPv4 prints the IPv4 packet.
@@ -110,3 +116,18 @@ func GenMACAddr() net.HardwareAddr {
 func NewWaterInterface(c water.Config) (Interface, error) {
 	return water.New(c)
 }
+
+// Returns the maximum number associated with a CIDR
+func GetMaxUsers(string clientNetPrefix) int {
+
+	_, ipnet, err := net.ParseCIDR(clientNetPrefix)
+	if err != nil {
+		glog.Fatal("Could not parse Client CIDR")
+	}
+
+	// Gateway will reject requests when the user count reaches 95%.
+	size, _ := ipnet.Mask.Size()
+	max := math.Pow(2, float64(32-size)) - 2
+	return int(max)
+}
+

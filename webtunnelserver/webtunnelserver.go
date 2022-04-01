@@ -31,9 +31,10 @@ var upgrader = websocket.Upgrader{
 
 // Metrics is the system metrics structure.
 type Metrics struct {
-	Users   int // Total connected users.
-	Packets int // total packets.
-	Bytes   int // bytes pushed.
+	Users   int  // Total connected users.
+	Maxusers int // Maximum users supported by endpoint. 
+	Packets int  // total packets.
+	Bytes   int  // bytes pushed.
 }
 
 // WebTunnelServer represents a webtunnel server struct.
@@ -144,6 +145,9 @@ func (r *WebTunnelServer) Start() {
 	} else {
 		go func() { log.Fatal(http.ListenAndServe(r.serverIPPort, nil)) }()
 	}
+
+	// Initialise some Metrics
+
 
 	// Read and process packets from the tunnel interface.
 	go r.processTUNPacket()
@@ -281,6 +285,7 @@ func (r *WebTunnelServer) httpEndpoint(w http.ResponseWriter, rcv *http.Request)
 // GetMetrics returns the current server metrics.
 func (r *WebTunnelServer) GetMetrics() *Metrics {
 	r.metrics.Users = r.ipam.GetAllocatedCount()
+	r.metrics.
 	return r.metrics
 }
 
