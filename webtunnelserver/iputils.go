@@ -17,7 +17,7 @@ type UserInfo struct {
 	username, hostname string
 }
 
-// ipData represents the data for each IP.
+// ipData represents data associated for each IP.
 type ipData struct {
 	ipStatus int
 	data     interface{} // This field will point to the Websocket Connection object mapped to the IP
