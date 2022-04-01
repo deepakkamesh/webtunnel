@@ -134,6 +134,8 @@ func (r *WebTunnelServer) Start() {
 	// Start the HTTP Server.
 	http.HandleFunc("/", r.httpEndpoint)
 	http.HandleFunc("/ws", r.wsEndpoint)
+	http.HandleFunc("/healthz", r.healthEndpoint)
+	http.HandleFunc("/varz", r.metricEndpoint)
 
 	// Start the custom handlers.
 	for e, h := range r.customHTTPHandlers {
@@ -147,7 +149,7 @@ func (r *WebTunnelServer) Start() {
 	}
 
 	// Initialise some Metrics
-
+	r.Metrics.MaxUsers=getMaxUsers(r.clientNetPrefix)
 
 	// Read and process packets from the tunnel interface.
 	go r.processTUNPacket()
@@ -282,10 +284,25 @@ func (r *WebTunnelServer) httpEndpoint(w http.ResponseWriter, rcv *http.Request)
 	fmt.Fprint(w, "OK")
 }
 
+// healthEndpoint
+func (r *WebTunnelServer) healthEndpoint(w http.ResponseWriter, rcv *http.Request) {
+	m := r.GetMetrics()
+	if m.Users < maxUsers {
+		fmt.Fprint(w,"OK")
+	} else {
+		http.Error(w, "Max Users Reached", 500)
+	}
+}
+
+// metricEndpoint
+func (r *WebTunnelServer) metricEndpoint(w http.ResponseWriter, rcv *http.Request) {
+	fmt.Fprint(w, w.GetMetrics())
+}
+
+
 // GetMetrics returns the current server metrics.
 func (r *WebTunnelServer) GetMetrics() *Metrics {
-	r.metrics.Users = r.ipam.GetAllocatedCount()
-	r.metrics.
+	r.metrics.Users = r.ipam.GetAllocatedCount()-3 // 3 Ips are alllocated for net/gw/router
 	return r.metrics
 }
 
