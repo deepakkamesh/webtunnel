@@ -153,10 +153,33 @@ func (r *WebTunnelServer) Start() {
 
 	// Read and process packets from the tunnel interface.
 	go r.processTUNPacket()
+
+	// Routinely sends Ping packets to the Websocket interface.
+	// Use to calculate clients average latency.
+	go r.processPings()
 }
 
 // Stop the webtunnel server.
 func (r *WebTunnelServer) Stop() {
+}
+
+// processPings() processes the websocket pings sent from the server to the client
+// Those are used to measure the latency seen with the clients.
+func (r *WebTunnelServer processPings() {
+	time.Sleep(60* time.Second)
+	for {
+		for _, connPair := range r.ipam.GetIPsWSConnsPairs() {
+			 ip := connPair.IP
+			 ws := connPair.wsConn
+			 tV := time.Now().UnixMilli()
+			 buf := make([]byte, binary.MaxVarintLen64)
+			 binary.PutVarint(buf, tV)
+                         if err := ws.WriteControl(websocket.PingMessage,buf); err != nil {
+				 glog.V(1).Warningf("issue sending ping to %v, reason: %v", ip, err)
+			 }
+		}
+		time.Sleep(60* time.Second)
+	}
 }
 
 // processTUNPacket processes the packets read from tunnel.
@@ -179,7 +202,7 @@ func (r *WebTunnelServer) processTUNPacket() {
 		// Get dst IP and corresponding websocket connection.
 		packet := gopacket.NewPacket(oPkt, layers.LayerTypeIPv4, gopacket.Default)
 		ip, _ := packet.Layer(layers.LayerTypeIPv4).(*layers.IPv4)
-		data, err := r.ipam.GetData(ip.DstIP.String())
+		data, err := r.ipam.GetData(ip.DstIP.String()) // data is the connection object linked to the IP
 		if err != nil {
 			glog.V(2).Infof("unsolicited packet for IP:%v", ip.DstIP.String())
 			continue
@@ -275,7 +298,12 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 			// Add to metrics.
 			r.metrics.Bytes += n
 			r.metrics.Packets++
+		case websocket.PongMessage:  // Pong message from the client
+			// get IP of client
+			// check timeStamp of send + reply
+			// update metric
 		}
+
 	}
 }
 
