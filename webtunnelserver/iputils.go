@@ -152,7 +152,7 @@ func (i *IPPam) DumpAllocations() map[string]*UserInfo {
 		if d == nil {
 			continue
 		}
-		allocations[k] = d		
+		allocations[k] = d
 	}
 	return allocations
 }
