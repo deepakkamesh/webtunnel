@@ -5,10 +5,12 @@ See examples for implementation.
 package webtunnelserver
 
 import (
+	"encoding/binary"
 	"fmt"
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	wc "github.com/deepakkamesh/webtunnel/webtunnelcommon"
 	"github.com/golang/glog"
@@ -32,7 +34,7 @@ var upgrader = websocket.Upgrader{
 // Metrics is the system metrics structure.
 type Metrics struct {
 	Users    int // Total connected users.
-	Maxusers int // Maximum users supported by endpoint.
+	MaxUsers int // Maximum users supported by endpoint.
 	Packets  int // total packets.
 	Bytes    int // bytes pushed.
 }
@@ -149,7 +151,7 @@ func (r *WebTunnelServer) Start() {
 	}
 
 	// Initialise some Metrics
-	r.Metrics.MaxUsers = getMaxUsers(r.clientNetPrefix)
+	// r.metrics.MaxUsers = getMaxUsers(r.clientNetPrefix)
 
 	// Read and process packets from the tunnel interface.
 	go r.processTUNPacket()
@@ -168,14 +170,12 @@ func (r *WebTunnelServer) Stop() {
 func (r *WebTunnelServer) processPings() {
 	time.Sleep(60 * time.Second)
 	for {
-		for _, connPair := range r.ipam.GetIPsWSConnsPairs() {
-			ip := connPair.IP
-			ws := connPair.wsConn
+		for ip, ws := range r.conns {
 			tV := time.Now().UnixMilli()
 			buf := make([]byte, binary.MaxVarintLen64)
 			binary.PutVarint(buf, tV)
-			if err := ws.WriteControl(websocket.PingMessage, buf); err != nil {
-				glog.V(1).Warningf("issue sending ping to %v, reason: %v", ip, err)
+			if err := ws.WriteControl(websocket.PingMessage, buf, time.Now().Add(time.Duration(5*time.Second))); err != nil {
+				glog.Warningf("issue sending ping to %v, reason: %v", ip, err)
 			}
 		}
 		time.Sleep(60 * time.Second)
@@ -315,7 +315,7 @@ func (r *WebTunnelServer) httpEndpoint(w http.ResponseWriter, rcv *http.Request)
 // healthEndpoint
 func (r *WebTunnelServer) healthEndpoint(w http.ResponseWriter, rcv *http.Request) {
 	m := r.GetMetrics()
-	if m.Users < maxUsers {
+	if m.Users < m.MaxUsers {
 		fmt.Fprint(w, "OK")
 	} else {
 		http.Error(w, "Max Users Reached", 500)
@@ -324,7 +324,7 @@ func (r *WebTunnelServer) healthEndpoint(w http.ResponseWriter, rcv *http.Reques
 
 // metricEndpoint
 func (r *WebTunnelServer) metricEndpoint(w http.ResponseWriter, rcv *http.Request) {
-	fmt.Fprint(w, w.GetMetrics())
+	fmt.Fprint(w, r.GetMetrics())
 }
 
 // GetMetrics returns the current server metrics.
