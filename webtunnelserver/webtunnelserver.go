@@ -31,10 +31,10 @@ var upgrader = websocket.Upgrader{
 
 // Metrics is the system metrics structure.
 type Metrics struct {
-	Users   int  // Total connected users.
-	Maxusers int // Maximum users supported by endpoint. 
-	Packets int  // total packets.
-	Bytes   int  // bytes pushed.
+	Users    int // Total connected users.
+	Maxusers int // Maximum users supported by endpoint.
+	Packets  int // total packets.
+	Bytes    int // bytes pushed.
 }
 
 // WebTunnelServer represents a webtunnel server struct.
@@ -149,7 +149,7 @@ func (r *WebTunnelServer) Start() {
 	}
 
 	// Initialise some Metrics
-	r.Metrics.MaxUsers=getMaxUsers(r.clientNetPrefix)
+	r.Metrics.MaxUsers = getMaxUsers(r.clientNetPrefix)
 
 	// Read and process packets from the tunnel interface.
 	go r.processTUNPacket()
@@ -165,20 +165,20 @@ func (r *WebTunnelServer) Stop() {
 
 // processPings() processes the websocket pings sent from the server to the client
 // Those are used to measure the latency seen with the clients.
-func (r *WebTunnelServer processPings() {
-	time.Sleep(60* time.Second)
+func (r *WebTunnelServer) processPings() {
+	time.Sleep(60 * time.Second)
 	for {
 		for _, connPair := range r.ipam.GetIPsWSConnsPairs() {
-			 ip := connPair.IP
-			 ws := connPair.wsConn
-			 tV := time.Now().UnixMilli()
-			 buf := make([]byte, binary.MaxVarintLen64)
-			 binary.PutVarint(buf, tV)
-                         if err := ws.WriteControl(websocket.PingMessage,buf); err != nil {
-				 glog.V(1).Warningf("issue sending ping to %v, reason: %v", ip, err)
-			 }
+			ip := connPair.IP
+			ws := connPair.wsConn
+			tV := time.Now().UnixMilli()
+			buf := make([]byte, binary.MaxVarintLen64)
+			binary.PutVarint(buf, tV)
+			if err := ws.WriteControl(websocket.PingMessage, buf); err != nil {
+				glog.V(1).Warningf("issue sending ping to %v, reason: %v", ip, err)
+			}
 		}
-		time.Sleep(60* time.Second)
+		time.Sleep(60 * time.Second)
 	}
 }
 
@@ -298,7 +298,7 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 			// Add to metrics.
 			r.metrics.Bytes += n
 			r.metrics.Packets++
-		case websocket.PongMessage:  // Pong message from the client
+		case websocket.PongMessage: // Pong message from the client
 			// get IP of client
 			// check timeStamp of send + reply
 			// update metric
@@ -316,7 +316,7 @@ func (r *WebTunnelServer) httpEndpoint(w http.ResponseWriter, rcv *http.Request)
 func (r *WebTunnelServer) healthEndpoint(w http.ResponseWriter, rcv *http.Request) {
 	m := r.GetMetrics()
 	if m.Users < maxUsers {
-		fmt.Fprint(w,"OK")
+		fmt.Fprint(w, "OK")
 	} else {
 		http.Error(w, "Max Users Reached", 500)
 	}
@@ -327,10 +327,9 @@ func (r *WebTunnelServer) metricEndpoint(w http.ResponseWriter, rcv *http.Reques
 	fmt.Fprint(w, w.GetMetrics())
 }
 
-
 // GetMetrics returns the current server metrics.
 func (r *WebTunnelServer) GetMetrics() *Metrics {
-	r.metrics.Users = r.ipam.GetAllocatedCount()-3 // 3 Ips are alllocated for net/gw/router
+	r.metrics.Users = r.ipam.GetAllocatedCount() - 3 // 3 Ips are alllocated for net/gw/router
 	return r.metrics
 }
 
