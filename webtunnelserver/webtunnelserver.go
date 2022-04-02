@@ -151,7 +151,7 @@ func (r *WebTunnelServer) Start() {
 	}
 
 	// Initialise some Metrics
-	// r.metrics.MaxUsers = getMaxUsers(r.clientNetPrefix)
+	r.metrics.MaxUsers = GetMaxUsers(r.clientNetPrefix)
 
 	// Read and process packets from the tunnel interface.
 	go r.processTUNPacket()

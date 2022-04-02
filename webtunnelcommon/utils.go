@@ -116,17 +116,3 @@ func GenMACAddr() net.HardwareAddr {
 func NewWaterInterface(c water.Config) (Interface, error) {
 	return water.New(c)
 }
-
-// Returns the maximum number associated with a CIDR
-func GetMaxUsers(string clientNetPrefix) int {
-
-	_, ipnet, err := net.ParseCIDR(clientNetPrefix)
-	if err != nil {
-		glog.Fatal("Could not parse Client CIDR")
-	}
-
-	// Gateway will reject requests when the user count reaches 95%.
-	size, _ := ipnet.Mask.Size()
-	max := math.Pow(2, float64(32-size)) - 2
-	return int(max)
-}
