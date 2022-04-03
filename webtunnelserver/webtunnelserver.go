@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 
 	wc "github.com/deepakkamesh/webtunnel/webtunnelcommon"
@@ -238,6 +239,13 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 					username = msg[1]
 					hostname = msg[2]
 				}
+
+				serverHostname, err := os.Hostname()
+				if err != nil {
+					glog.Errorf("Could not get hostname: %v", err)
+					return
+				}
+
 				glog.Infof("Config request from %s@%s", username, hostname)
 				cfg := &wc.ClientConfig{
 					IP:          ip,
@@ -245,6 +253,7 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 					RoutePrefix: r.routePrefix,
 					GWIp:        r.gwIP,
 					DNS:         r.dnsIPs,
+					ServerInfo:  &wc.ServerInfo{serverHostname},
 				}
 				if err := conn.WriteJSON(cfg); err != nil {
 					glog.Warningf("error sending config to client: %v", err)
