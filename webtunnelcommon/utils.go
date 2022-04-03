@@ -14,17 +14,17 @@ import (
 
 // ServerInfo represents the struct provided to the client for debuging purpose
 type ServerInfo struct {
-	hostname string `json::server` // for now only provide gw hostname to client
+	Hostname string `json:"hostname"` // for now only provide gw hostname to client
 }
 
 // ClientConfig represents the struct to pass config from server to client.
 type ClientConfig struct {
-	IP          string     `json:"ip"`          // IP address of client.
-	Netmask     string     `json:"netmask"`     // Netmask of interface.
-	RoutePrefix []string   `json:"routeprefix"` // Network prefix to route.
-	GWIp        string     `json:"gwip"`        // Gateway IP address.
-	DNS         []string   `json:"dns"`         // DNS IPs
-	ServerInfo  ServerInfo `json:"serverinfo"`  // Server Information for debug or troubleshooting
+	IP          string      `json:"ip"`          // IP address of client.
+	Netmask     string      `json:"netmask"`     // Netmask of interface.
+	RoutePrefix []string    `json:"routeprefix"` // Network prefix to route.
+	GWIp        string      `json:"gwip"`        // Gateway IP address.
+	DNS         []string    `json:"dns"`         // DNS IPs
+	ServerInfo  *ServerInfo `json:"serverinfo"`  // Server Information for debug or troubleshooting
 }
 
 // PrintPacketIPv4 prints the IPv4 packet.

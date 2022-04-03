@@ -55,3 +55,14 @@ func TestIP(t *testing.T) {
 		t.Errorf("Failed to release IP expect: nil got: %s", err)
 	}
 }
+
+func TestGetMaxUsers(t *testing.T) {
+	a := getMaxUsers("192.168.0.0/24")
+	if a != 253 {
+		t.Errorf("Expected 253, got: %v", a)
+	}
+	b := getMaxUsers("192.168.0.0/23")
+	if b != 509 {
+		t.Errorf("Expected 509, got: %v", b)
+	}
+}

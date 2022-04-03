@@ -191,7 +191,7 @@ func lastAddr(n *net.IPNet) net.IP {
 }
 
 // Returns the maximum number associated with a CIDR
-func GetMaxUsers(clientNetPrefix string) int {
+func getMaxUsers(clientNetPrefix string) int {
 
 	_, ipnet, err := net.ParseCIDR(clientNetPrefix)
 	if err != nil {
@@ -200,6 +200,6 @@ func GetMaxUsers(clientNetPrefix string) int {
 
 	// Gateway will reject requests when the user count reaches 95%.
 	size, _ := ipnet.Mask.Size()
-	max := math.Pow(2, float64(32-size)) - 2
+	max := math.Pow(2, float64(32-size)) - 3 // router,network,broadcast allocations have to be remove from the count
 	return int(max)
 }

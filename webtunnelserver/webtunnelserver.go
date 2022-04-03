@@ -151,7 +151,7 @@ func (r *WebTunnelServer) Start() {
 	}
 
 	// Initialise some Metrics
-	r.metrics.MaxUsers = GetMaxUsers(r.clientNetPrefix)
+	r.metrics.MaxUsers = getMaxUsers(r.clientNetPrefix)
 
 	// Read and process packets from the tunnel interface.
 	go r.processTUNPacket()
@@ -268,6 +268,7 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 					hostname = msg[2]
 				}
 				glog.Infof("Config request from %s@%s", username, hostname)
+
 				cfg := &wc.ClientConfig{
 					IP:          ip,
 					Netmask:     r.tunNetmask,
