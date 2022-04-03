@@ -253,7 +253,7 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 					RoutePrefix: r.routePrefix,
 					GWIp:        r.gwIP,
 					DNS:         r.dnsIPs,
-					ServerInfo:  &wc.ServerInfo{serverHostname},
+					ServerInfo:  &wc.ServerInfo{Hostname: serverHostname},
 				}
 				if err := conn.WriteJSON(cfg); err != nil {
 					glog.Warningf("error sending config to client: %v", err)
