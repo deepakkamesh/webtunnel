@@ -1,7 +1,6 @@
 package webtunnelserver
 
 import (
-	"bytes"
 	"flag"
 	"net"
 	"net/url"
@@ -90,7 +89,7 @@ func TestServer(t *testing.T) {
 	}
 	packet := gopacket.NewPacket(b, layers.LayerTypeIPv4, gopacket.Default)
 	ip, _ := packet.Layer(layers.LayerTypeIPv4).(*layers.IPv4)
-	if bytes.Compare(ip.SrcIP, net.IP{1, 1, 1, 1}) != 0 {
+	if !net.IP.Equal(ip.SrcIP, net.IP{1, 1, 1, 1}) {
 		t.Errorf("Write failed: Got %v Expect %v", ip.SrcIP, net.IP{1, 1, 1, 1})
 	}
 
