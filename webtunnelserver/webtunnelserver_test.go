@@ -99,6 +99,15 @@ func TestServer(t *testing.T) {
 		t.Error(err)
 	}
 
+	// Test User Metrics status
+	metric := server.GetMetrics();
+	if metric.MaxUsers != 253 {
+		t.Errorf("MaxUsers expected: 253, got: %v",metric.MaxUsers)
+	}
+	if metric.Users != 1 {
+		t.Errorf("Users expected: 1, got: %v",metric.Users)
+	}
+
 	// Close connection.
 	err = c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 	if err != nil {
