@@ -107,11 +107,11 @@ func NewWebtunnelClient(serverIPPort string, wsDialer *websocket.Dialer,
 
 // PingHandler will return the function to handle the Ping sent from the server.
 // It sends the time diff seen between the client and server.
-func (w* WebtunnelClient) PingHandler(wsConn *websocket.Conn) (func (appStr string)error) {
+func (w *WebtunnelClient) PingHandler(wsConn *websocket.Conn) func(appStr string) error {
 	return func(aStr string) error {
 		bt := []byte(aStr)
-                val, _ := binary.Varint(bt)
-                glog.V(1).Infof("ping received from server, time value: %v", val)
+		val, _ := binary.Varint(bt)
+		glog.V(1).Infof("ping received from server, time value: %v", val)
 		buf := make([]byte, binary.MaxVarintLen64)
 		tV := time.Now().UTC().UnixNano()
 		binary.PutVarint(buf, tV-val) // we will send the servertime - our time

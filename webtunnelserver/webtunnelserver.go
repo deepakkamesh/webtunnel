@@ -170,7 +170,7 @@ func (r *WebTunnelServer) Stop() {
 func (r *WebTunnelServer) PongHandler(ip string) func(string) error {
 	return func(aStr string) error {
 		bt := []byte(aStr)
-                val, _ := binary.Varint(bt)
+		val, _ := binary.Varint(bt)
 		glog.V(1).Info("Client %v answered, diff is %v", ip, val)
 		return nil
 	}
