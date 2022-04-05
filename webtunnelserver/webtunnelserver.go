@@ -167,9 +167,11 @@ func (r *WebTunnelServer) Stop() {
 }
 
 // PongHandler handles the pong messages from a client
-func (r *WebTunnelServer) PongHandler(appData string) error {
-	glog.V(1).Info("Client answered: %v", appData)
-	return nil
+func (r *WebTunnelServer) PongHandler(ip string) (func(string) error) {
+	return func(aStr string) error{
+		glog.V(1).Info("Client %v answered: %v", ip, aStr)
+		return nil
+	}
 }
 
 // processPings() processes the websocket pings sent from the server to the client
@@ -179,9 +181,7 @@ func (r *WebTunnelServer) processPings() {
 	time.Sleep(60 * time.Second)
 	for {
 		for ip, wsConn := range r.conns {
-			// Set Handler first
-			wsConn.SetPongHandler(r.PongHandler)
-			// Send ping
+			// Send ping (Pong handler was setup soon after when wsConn was created)
 			tV := time.Now().UnixMilli()
 			buf := make([]byte, binary.MaxVarintLen64)
 			binary.PutVarint(buf, tV)
@@ -251,6 +251,9 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 	}
 
 	glog.V(1).Infof("New connection from %s", ip)
+
+	// Create Pong Handler to handle Pings
+	conn.SetPongHandler(r.PongHandler(ip))
 
 	// Process websocket packet.
 	for {
