@@ -166,16 +166,26 @@ func (r *WebTunnelServer) Start() {
 func (r *WebTunnelServer) Stop() {
 }
 
+// PongHandler handles the pong messages from a client
+func (r *WebTunnelServer) PongHandler(appData string) error {
+	glog.V(1).Info("Client answered: %v", appData)
+	return nil
+}
+
 // processPings() processes the websocket pings sent from the server to the client
 // Those are used to measure the latency seen with the clients.
 func (r *WebTunnelServer) processPings() {
+	// Small delay before sending pings
 	time.Sleep(60 * time.Second)
 	for {
-		for ip, ws := range r.conns {
+		for ip, wsConn := range r.conns {
+			// Set Handler first
+			wsConn.SetPongHandler(r.PongHandler)
+			// Send ping
 			tV := time.Now().UnixMilli()
 			buf := make([]byte, binary.MaxVarintLen64)
 			binary.PutVarint(buf, tV)
-			if err := ws.WriteControl(websocket.PingMessage, buf, time.Now().Add(time.Duration(5*time.Second))); err != nil {
+			if err := wsConn.WriteControl(websocket.PingMessage, buf, time.Now().Add(time.Duration(5*time.Second))); err != nil {
 				glog.Warningf("issue sending ping to %v, reason: %v", ip, err)
 			}
 		}
