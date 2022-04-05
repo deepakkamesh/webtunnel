@@ -167,8 +167,8 @@ func (r *WebTunnelServer) Stop() {
 }
 
 // PongHandler handles the pong messages from a client
-func (r *WebTunnelServer) PongHandler(ip string) (func(string) error) {
-	return func(aStr string) error{
+func (r *WebTunnelServer) PongHandler(ip string) func(string) error {
+	return func(aStr string) error {
 		glog.V(1).Info("Client %v answered: %v", ip, aStr)
 		return nil
 	}
