@@ -169,7 +169,9 @@ func (r *WebTunnelServer) Stop() {
 // PongHandler handles the pong messages from a client
 func (r *WebTunnelServer) PongHandler(ip string) func(string) error {
 	return func(aStr string) error {
-		glog.V(1).Info("Client %v answered: %v", ip, aStr)
+		bt := []byte(aStr)
+                val, _ := binary.Varint(bt)
+		glog.V(1).Info("Client %v answered, diff is %v", ip, val)
 		return nil
 	}
 }
@@ -182,8 +184,8 @@ func (r *WebTunnelServer) processPings() {
 	for {
 		for ip, wsConn := range r.conns {
 			// Send ping (Pong handler was setup soon after when wsConn was created)
-			tV := time.Now().UnixMilli()
 			buf := make([]byte, binary.MaxVarintLen64)
+			tV := time.Now().UTC().UnixNano()
 			binary.PutVarint(buf, tV)
 			if err := wsConn.WriteControl(websocket.PingMessage, buf, time.Now().Add(time.Duration(5*time.Second))); err != nil {
 				glog.Warningf("issue sending ping to %v, reason: %v", ip, err)
