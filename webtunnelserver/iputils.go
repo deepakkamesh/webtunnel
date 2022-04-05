@@ -3,8 +3,11 @@ package webtunnelserver
 import (
 	"encoding/binary"
 	"fmt"
+	"math"
 	"net"
 	"sync"
+
+	"github.com/golang/glog"
 )
 
 const (
@@ -152,7 +155,7 @@ func (i *IPPam) DumpAllocations() map[string]*UserInfo {
 		if d == nil {
 			continue
 		}
-		allocations[k] = d		
+		allocations[k] = d
 	}
 	return allocations
 }
@@ -185,4 +188,18 @@ func lastAddr(n *net.IPNet) net.IP {
 	ip := make(net.IP, len(n.IP.To4()))
 	binary.BigEndian.PutUint32(ip, binary.BigEndian.Uint32(n.IP.To4())|^binary.BigEndian.Uint32(net.IP(n.Mask).To4()))
 	return ip
+}
+
+// Returns the maximum number associated with a CIDR
+func getMaxUsers(clientNetPrefix string) int {
+
+	_, ipnet, err := net.ParseCIDR(clientNetPrefix)
+	if err != nil {
+		glog.Fatal("Could not parse Client CIDR")
+	}
+
+	// Gateway will reject requests when the user count reaches 95%.
+	size, _ := ipnet.Mask.Size()
+	max := math.Pow(2, float64(32-size)) - 3 // router,network,broadcast allocations have to be remove from the count
+	return int(max)
 }

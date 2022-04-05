@@ -32,9 +32,10 @@ var upgrader = websocket.Upgrader{
 
 // Metrics is the system metrics structure.
 type Metrics struct {
-	Users   int // Total connected users.
-	Packets int // total packets.
-	Bytes   int // bytes pushed.
+	Users    int // Total connected users.
+	MaxUsers int // Maximum users supported by endpoint.
+	Packets  int // total packets.
+	Bytes    int // bytes pushed.
 }
 
 // WebTunnelServer represents a webtunnel server struct.
@@ -134,6 +135,8 @@ func (r *WebTunnelServer) Start() {
 	// Start the HTTP Server.
 	http.HandleFunc("/", r.httpEndpoint)
 	http.HandleFunc("/ws", r.wsEndpoint)
+	http.HandleFunc("/healthz", r.healthEndpoint)
+	http.HandleFunc("/varz", r.metricEndpoint)
 
 	// Start the custom handlers.
 	for e, h := range r.customHTTPHandlers {
@@ -145,6 +148,9 @@ func (r *WebTunnelServer) Start() {
 	} else {
 		go func() { log.Fatal(http.ListenAndServe(r.serverIPPort, nil)) }()
 	}
+
+	// Initialise some Metrics
+	r.metrics.MaxUsers = getMaxUsers(r.clientNetPrefix)
 
 	// Read and process packets from the tunnel interface.
 	go r.processTUNPacket()
@@ -174,7 +180,7 @@ func (r *WebTunnelServer) processTUNPacket() {
 		// Get dst IP and corresponding websocket connection.
 		packet := gopacket.NewPacket(oPkt, layers.LayerTypeIPv4, gopacket.Default)
 		ip, _ := packet.Layer(layers.LayerTypeIPv4).(*layers.IPv4)
-		data, err := r.ipam.GetData(ip.DstIP.String())
+		data, err := r.ipam.GetData(ip.DstIP.String()) // data is the connection object linked to the IP
 		if err != nil {
 			glog.V(2).Infof("unsolicited packet for IP:%v", ip.DstIP.String())
 			continue
@@ -247,6 +253,7 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 				}
 
 				glog.Infof("Config request from %s@%s", username, hostname)
+
 				cfg := &wc.ClientConfig{
 					IP:          ip,
 					Netmask:     r.tunNetmask,
@@ -278,7 +285,12 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 			// Add to metrics.
 			r.metrics.Bytes += n
 			r.metrics.Packets++
+		case websocket.PongMessage: // Pong message from the client
+			// get IP of client
+			// check timeStamp of send + reply
+			// update metric
 		}
+
 	}
 }
 
@@ -287,9 +299,24 @@ func (r *WebTunnelServer) httpEndpoint(w http.ResponseWriter, rcv *http.Request)
 	fmt.Fprint(w, "OK")
 }
 
+// healthEndpoint
+func (r *WebTunnelServer) healthEndpoint(w http.ResponseWriter, rcv *http.Request) {
+	m := r.GetMetrics()
+	if m.Users < m.MaxUsers {
+		fmt.Fprint(w, "OK")
+	} else {
+		http.Error(w, "Max Users Reached", 500)
+	}
+}
+
+// metricEndpoint
+func (r *WebTunnelServer) metricEndpoint(w http.ResponseWriter, rcv *http.Request) {
+	fmt.Fprint(w, r.GetMetrics())
+}
+
 // GetMetrics returns the current server metrics.
 func (r *WebTunnelServer) GetMetrics() *Metrics {
-	r.metrics.Users = r.ipam.GetAllocatedCount()
+	r.metrics.Users = r.ipam.GetAllocatedCount() - 3 // 3 Ips are alllocated for net/gw/router
 	return r.metrics
 }
 
