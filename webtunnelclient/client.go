@@ -105,6 +105,18 @@ func NewWebtunnelClient(serverIPPort string, wsDialer *websocket.Dialer,
 	}, nil
 }
 
+// PingHandler will return the function to handle the Ping sent from the server.
+// It just sends the time seen by the client for now.
+func (w* WebtunnelClient) PingHandler(wsConn *websocket.Conn) (func (appStr )error) {
+	return func(aStr string) error {
+		tv := time.Now().UnixMilli()
+		buf := make([]byte, binary)
+		binary.PutVarint(buf, tV)
+		wsConn.WriteControl(websocket.PongMessage, buf, time.Now().Add(time.Duration(5*time.Second)))
+		return nil
+	}
+}
+
 // Start the client.
 func (w *WebtunnelClient) Start() error {
 
