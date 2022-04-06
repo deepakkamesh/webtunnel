@@ -1,7 +1,6 @@
 package webtunnelserver
 
 import (
-	"bytes"
 	"flag"
 	"net"
 	"net/url"
@@ -90,7 +89,7 @@ func TestServer(t *testing.T) {
 	}
 	packet := gopacket.NewPacket(b, layers.LayerTypeIPv4, gopacket.Default)
 	ip, _ := packet.Layer(layers.LayerTypeIPv4).(*layers.IPv4)
-	if bytes.Compare(ip.SrcIP, net.IP{1, 1, 1, 1}) != 0 {
+	if !net.IP.Equal(ip.SrcIP, net.IP{1, 1, 1, 1}) {
 		t.Errorf("Write failed: Got %v Expect %v", ip.SrcIP, net.IP{1, 1, 1, 1})
 	}
 
@@ -98,6 +97,15 @@ func TestServer(t *testing.T) {
 	mockInterface.EXPECT().Write([]byte{1, 3, 3}).Return(1, nil).Times(1)
 	if err = c.WriteMessage(websocket.BinaryMessage, []byte{1, 3, 3}); err != nil {
 		t.Error(err)
+	}
+
+	// Test User Metrics status
+	metric := server.GetMetrics();
+	if metric.MaxUsers != 253 {
+		t.Errorf("MaxUsers expected: 253, got: %v",metric.MaxUsers)
+	}
+	if metric.Users != 1 {
+		t.Errorf("Users expected: 1, got: %v",metric.Users)
 	}
 
 	// Close connection.
