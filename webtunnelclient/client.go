@@ -54,6 +54,7 @@ type WebtunnelClient struct {
 	ifce         *Interface             // Struct to hold interface configuration.
 	userInitFunc func(*Interface) error // User supplied callback for OS initialization.
 	wsWriteLock  sync.Mutex             // Lock for Websocket Writes.
+	metricsLock  sync.Mutex             // Lock for Metrics Writes.
 	packetCnt    int                    // Count of packets.
 	bytesCnt     int                    // Count of bytes.
 	serverIPPort string                 // Websocket serverIP:Port.
@@ -243,8 +244,10 @@ func (w *WebtunnelClient) Stop() error {
 
 // ResetMetrics reset the internal counters.
 func (w *WebtunnelClient) ResetMetrics() {
+	w.metricsLock.Lock()
 	w.packetCnt = 0
 	w.bytesCnt = 0
+	w.metricsLock.Unlock()
 }
 
 // GetMetrics returns the internal metrics.
@@ -320,8 +323,10 @@ func (w *WebtunnelClient) processWSPacket() {
 			w.Error <- fmt.Errorf("error writing to tunnel %s", err)
 			return
 		}
+		w.metricsLock.Lock()
 		w.packetCnt++
 		w.bytesCnt += n
+		w.metricsLock.Unlock()
 	}
 }
 
