@@ -323,10 +323,6 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 			// Add to metrics.
 			r.metrics.Bytes += n
 			r.metrics.Packets++
-		case websocket.PongMessage: // Pong message from the client
-			// get IP of client
-			// check timeStamp of send + reply
-			// update metric
 		}
 
 	}
