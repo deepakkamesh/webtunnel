@@ -56,7 +56,7 @@ type WebTunnelServer struct {
 	metrics            *Metrics                   // Metrics.
 	secure             bool                       // Start Server with https.
 	customHTTPHandlers map[string]http.Handler    // Array of custom HTTP handlers.
-	metricsLock	   sync.Mutex                 // Mutex for metrics write
+	metricsLock        sync.Mutex                 // Mutex for metrics write
 }
 
 /*

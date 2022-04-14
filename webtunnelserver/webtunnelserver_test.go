@@ -100,12 +100,12 @@ func TestServer(t *testing.T) {
 	}
 
 	// Test User Metrics status
-	metric := server.GetMetrics();
+	metric := server.GetMetrics()
 	if metric.MaxUsers != 253 {
-		t.Errorf("MaxUsers expected: 253, got: %v",metric.MaxUsers)
+		t.Errorf("MaxUsers expected: 253, got: %v", metric.MaxUsers)
 	}
 	if metric.Users != 1 {
-		t.Errorf("Users expected: 1, got: %v",metric.Users)
+		t.Errorf("Users expected: 1, got: %v", metric.Users)
 	}
 
 	// Close connection.
