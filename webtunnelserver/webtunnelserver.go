@@ -137,8 +137,8 @@ func (r *WebTunnelServer) Start() {
 	// Start the HTTP Server.
 	http.HandleFunc("/", r.httpEndpoint)
 	http.HandleFunc("/ws", r.wsEndpoint)
-	http.HandleFunc("/healthz", r.healthEndpoint)
-	http.HandleFunc("/varz", r.metricEndpoint)
+	http.HandleFunc("/metrichealthz", r.healthEndpoint)
+	http.HandleFunc("/metricvarz", r.metricEndpoint)
 
 	// Start the custom handlers.
 	for e, h := range r.customHTTPHandlers {
