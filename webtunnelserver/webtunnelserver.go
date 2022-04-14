@@ -5,12 +5,14 @@ See examples for implementation.
 package webtunnelserver
 
 import (
+	"encoding/binary"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	wc "github.com/deepakkamesh/webtunnel/webtunnelcommon"
 	"github.com/golang/glog"
@@ -156,10 +158,43 @@ func (r *WebTunnelServer) Start() {
 
 	// Read and process packets from the tunnel interface.
 	go r.processTUNPacket()
+
+	// Routinely sends Ping packets to the Websocket interface.
+	// Use to calculate clients average latency.
+	go r.processPings()
 }
 
 // Stop the webtunnel server.
 func (r *WebTunnelServer) Stop() {
+}
+
+// PongHandler handles the pong messages from a client
+func (r *WebTunnelServer) PongHandler(ip string) func(string) error {
+	return func(aStr string) error {
+		bt := []byte(aStr)
+		val, _ := binary.Varint(bt)
+		glog.V(1).Infof("Client %v answered, diff is %v", ip, val)
+		return nil
+	}
+}
+
+// processPings() processes the websocket pings sent from the server to the client
+// Those are used to measure the latency seen with the clients.
+func (r *WebTunnelServer) processPings() {
+	// Small delay before sending pings
+	time.Sleep(60 * time.Second)
+	for {
+		for ip, wsConn := range r.conns {
+			// Send ping (Pong handler was setup soon after when wsConn was created)
+			buf := make([]byte, binary.MaxVarintLen64)
+			tV := time.Now().UTC().UnixNano()
+			binary.PutVarint(buf, tV)
+			if err := wsConn.WriteControl(websocket.PingMessage, buf, time.Now().Add(time.Duration(5*time.Second))); err != nil {
+				glog.Warningf("issue sending ping to %v, reason: %v", ip, err)
+			}
+		}
+		time.Sleep(60 * time.Second)
+	}
 }
 
 // processTUNPacket processes the packets read from tunnel.
@@ -222,6 +257,9 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 	}
 
 	glog.V(1).Infof("New connection from %s", ip)
+
+	// Create Pong Handler to handle Pings
+	conn.SetPongHandler(r.PongHandler(ip))
 
 	// Process websocket packet.
 	for {
@@ -291,10 +329,6 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 			r.metrics.Bytes += n
 			r.metrics.Packets++
 			r.metricsLock.Unlock()
-		case websocket.PongMessage: // Pong message from the client
-			// get IP of client
-			// check timeStamp of send + reply
-			// update metric
 		}
 
 	}
