@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	wc "github.com/deepakkamesh/webtunnel/webtunnelcommon"
@@ -57,6 +58,7 @@ type WebTunnelServer struct {
 	metrics            *Metrics                   // Metrics.
 	secure             bool                       // Start Server with https.
 	customHTTPHandlers map[string]http.Handler    // Array of custom HTTP handlers.
+	metricsLock        sync.Mutex                 // Mutex for metrics write
 }
 
 /*
@@ -209,8 +211,10 @@ func (r *WebTunnelServer) processTUNPacket() {
 		oPkt = pkt[:n]
 
 		// Add to metrics.
+		r.metricsLock.Lock()
 		r.metrics.Bytes += n
 		r.metrics.Packets++
+		r.metricsLock.Unlock()
 
 		// Get dst IP and corresponding websocket connection.
 		packet := gopacket.NewPacket(oPkt, layers.LayerTypeIPv4, gopacket.Default)
@@ -321,8 +325,10 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 				r.Error <- fmt.Errorf("error writing to tunnel %s", err)
 			}
 			// Add to metrics.
+			r.metricsLock.Lock()
 			r.metrics.Bytes += n
 			r.metrics.Packets++
+			r.metricsLock.Unlock()
 		}
 
 	}
@@ -362,7 +368,9 @@ func (r *WebTunnelServer) DumpAllocations() map[string]*UserInfo {
 
 // ResetMetrics resets the metrics on the server.
 func (r *WebTunnelServer) ResetMetrics() {
+	r.metricsLock.Lock()
 	r.metrics.Users = 0
 	r.metrics.Packets = 0
 	r.metrics.Bytes = 0
+	r.metricsLock.Unlock()
 }
