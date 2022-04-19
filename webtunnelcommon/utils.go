@@ -15,6 +15,7 @@ import (
 // ServerInfo represents the struct provided to the client for debuging purpose
 type ServerInfo struct {
 	Hostname string `json:"hostname"` // for now only provide gw hostname to client
+	Session  string `json:"session"`  // session tracker from server
 }
 
 // ClientConfig represents the struct to pass config from server to client.
