@@ -8,8 +8,10 @@ import (
 	"encoding/binary"
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -263,19 +265,9 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 	}
 	defer conn.Close()
 
-	// Get IP and add to ip management.
-	ip, err := r.ipam.AcquireIP(conn)
-	if err != nil {
-		glog.Errorf("Error acquiring IP:%v", err)
-		return
-	}
+	// Process config packet first
+	var ip, session string
 
-	glog.V(1).Infof("New connection from %s", ip)
-
-	// Create Pong Handler to handle Pings
-	conn.SetPongHandler(r.PongHandler(ip))
-
-	// Process websocket packet.
 	for {
 		mt, message, err := conn.ReadMessage()
 		if err != nil {
@@ -298,16 +290,31 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 
 		switch mt {
 		case websocket.TextMessage: // Config message.
+			// Get IP and add to ip management.
+			ip, err := r.ipam.AcquireIP(conn)
+			if err != nil {
+				glog.Errorf("Error acquiring IP:%v", err)
+				return
+			}
+
+			glog.V(1).Infof("New connection from %s", ip)
 			msg := strings.Split(string(message), " ")
 			if msg[0] == "getConfig" {
-				var username, hostname string
-				if len(msg) != 3 {
+				var username, hostname, session string
+				if len(msg) == 3 {
+					// no session - this means a new connection
+					username = msg[1]
+					hostname = msg[2]
+				} else if len(msg) == 4 {
+					// session provided - means reconnect using previous IP
+					username = msg[1]
+					hostname = msg[2]
+					session = msg[3]
+
+				} else {
 					glog.Warningf("Cannot process username and hostname - using defaults")
 					username = "guest"
 					hostname = "workstation"
-				} else {
-					username = msg[1]
-					hostname = msg[2]
 				}
 
 				serverHostname, err := os.Hostname()
@@ -316,7 +323,12 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 					return
 				}
 
-				glog.Infof("Config request from %s@%s", username, hostname)
+				glog.Infof("Config request from %s@%s, session", username, hostname, session)
+
+				if session == "" {
+					tnow := strconv.Itoa(int(time.Now().Unix()))
+					session = tnow + randomString()
+				}
 
 				cfg := &wc.ClientConfig{
 					IP:          ip,
@@ -338,7 +350,33 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 					glog.Errorf("Unable to mark IP %v in use", ip)
 					return
 				}
+				break
 			}
+
+		case websocket.BinaryMessage: // Packet message.
+			r.Error <- fmt.Error("Expecting config message first")
+		}
+	}
+
+	// Create Pong Handler to handle Pings once config has been setup
+	conn.SetPongHandler(r.PongHandler(ip))
+
+	// Process websocket packets.
+	for {
+		mt, message, err := conn.ReadMessage()
+		if err != nil {
+			r.ipam.ReleaseIP(ip)
+			if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
+				glog.V(1).Infof("connection closed for %s", ip)
+				return
+			}
+			glog.Warningf("error reading from websocket for %s: %s ", rcv.RemoteAddr, err)
+			return
+		}
+
+		switch mt {
+		case websocket.TextMessage: // Config message.
+			r.Error <- fmt.Error("Expecting only packets")
 
 		case websocket.BinaryMessage: // Packet message.
 			wc.PrintPacketIPv4(message, "Server <- Websocket")
@@ -395,4 +433,9 @@ func (r *WebTunnelServer) ResetMetrics() {
 	r.metrics.Packets = 0
 	r.metrics.Bytes = 0
 	r.metricsLock.Unlock()
+}
+
+func randomString() string {
+	s := rand.Intn(10000)
+	return strconv.Itoa(s)
 }
