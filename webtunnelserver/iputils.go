@@ -6,6 +6,7 @@ import (
 	"math"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/golang/glog"
 )
@@ -18,6 +19,7 @@ const (
 // UserInfo represents the user information associated with an IP
 type UserInfo struct {
 	username, hostname string
+	sessionStart       time.Time
 }
 
 // ipData represents data associated for each IP.
@@ -100,22 +102,10 @@ func (i *IPPam) SetIPActiveWithUserInfo(ip, username, hostname string) error {
 	}
 	i.allocations[ip].ipStatus = ipStatusInUse
 	i.allocations[ip].userinfo = &UserInfo{
-		username: username,
-		hostname: hostname,
+		username:     username,
+		hostname:     hostname,
+		sessionStart: time.Now(),
 	}
-	return nil
-}
-
-// SetIPActive marks the IP as in use. IP is not considered active until this function is called.
-// Deprecated: SetIPActiveWithUserInfo to be used instead
-func (i *IPPam) SetIPActive(ip string) error {
-	i.lock.Lock()
-	defer i.lock.Unlock()
-
-	if _, exists := i.allocations[ip]; !exists {
-		return fmt.Errorf("IP not available")
-	}
-	i.allocations[ip].ipStatus = ipStatusInUse
 	return nil
 }
 
