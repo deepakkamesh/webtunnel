@@ -48,6 +48,7 @@ type Interface struct {
 // WebtunnelClient represents the client struct.
 type WebtunnelClient struct {
 	Error        chan error             // Channel to handle errors from goroutines.
+	isWSReady    bool                   // true when Websocket is ready - used when reconnecting
 	isNetReady   bool                   // true when network interface is ready.
 	isStopped    bool                   // True when Stop() called.
 	wsconn       *websocket.Conn        // Websocket connection.
@@ -62,6 +63,7 @@ type WebtunnelClient struct {
 	devType      water.DeviceType       // TUN/TAP.
 	scheme       string                 // Websocket Scheme.
 	leaseTime    uint32                 // DHCP lease time.
+	session      string                 // Session Tracker from Server
 }
 
 /*
@@ -223,12 +225,45 @@ func (w *WebtunnelClient) configureInterface() error {
 	w.ifce.RoutePrefix = routes
 	w.ifce.GWHWAddr = wc.GenMACAddr()
 
+	w.session = cfg.ServerInfo.Session
+
 	// Call user supplied function for any OS initializations needed from cli.
 	// Depending on OS this might be bringing up OS or other network commands.
 	if err := w.userInitFunc(w.ifce); err != nil {
 		return err
 	}
 
+	return nil
+}
+
+// Retry the connection after a disconnection
+func (w *WebtunnelClient) Retry() error {
+	userinfo, err := w.getUserInfo()
+	if err != nil {
+		return err
+	}
+	configString := "getConfig" + " " + userinfo + " " + w.session
+	if err := w.wsconn.WriteMessage(websocket.TextMessage, []byte(configString)); err != nil {
+		return err
+	}
+	cfg := &wc.ClientConfig{}
+	if err := w.wsconn.ReadJSON(cfg); err != nil {
+		return err
+	}
+	glog.V(1).Infof("Retrieved config from server %v", *cfg)
+	// verify session config from server matches current config
+	if cfg.ServerInfo.Session != w.session {
+		return fmt.Errorf("Reconnect mismatch on session, client wants: %v but server gives: %v",
+			w.session,
+			cfg.ServerInfo.Session,
+		)
+	}
+	if net.ParseIP(cfg.IP).To4() != w.ifce.IP {
+		return fmt.Errorf("Reconnect mismatch on IP, client wants: %v but server gives: %v",
+			w.ifce.IP,
+			net.ParseIP(cfg.IP).To4(),
+		)
+	}
 	return nil
 }
 
@@ -294,6 +329,10 @@ func (w *WebtunnelClient) processWSPacket() {
 	opts := gopacket.SerializeOptions{FixLengths: true, ComputeChecksums: true}
 
 	for {
+		// Skip if websocket is not ready - this means we are currently reconnecting
+		if !w.isWSReady {
+			continue
+		}
 		// Read packet from websocket.
 		mt, pkt, err := w.wsconn.ReadMessage()
 		if err != nil {
