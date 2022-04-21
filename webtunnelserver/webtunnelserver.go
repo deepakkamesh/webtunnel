@@ -267,12 +267,7 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 
 		switch mt {
 		case websocket.TextMessage: // Config message.
-			// Get IP and add to ip management.
-			ip, err := r.ipam.AcquireIP(conn)
-			if err != nil {
-				glog.Errorf("Error acquiring IP:%v", err)
-				return
-			}
+			
 
 			glog.V(1).Infof("New connection from %s", ip)
 			msg := strings.Split(string(message), " ")
@@ -282,11 +277,20 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 					// no session - this means a new connection
 					username = msg[1]
 					hostname = msg[2]
+
+					// Get IP and add to ip management.
+					ip, err := r.ipam.AcquireIP(conn)
+					if err != nil {
+						glog.Errorf("Error acquiring IP:%v", err)
+						return
+					}
 				} else if len(msg) == 4 {
 					// session provided - means reconnect using previous IP
 					username = msg[1]
 					hostname = msg[2]
 					session = msg[3]
+
+					// iterate on all ips to get the IP linked to this session
 
 				} else {
 					glog.Warningf("Cannot process username and hostname - using defaults")
@@ -305,6 +309,8 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 				if session == "" {
 					tnow := strconv.Itoa(int(time.Now().Unix()))
 					session = tnow + randomString()
+				} else {
+
 				}
 
 				cfg := &wc.ClientConfig{
@@ -323,7 +329,7 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 				// when a client disconnects but still packets are available in buffer for its ip and a new
 				// client acquires its ip it cannot get the config as the TUN writer is still busy trying to send
 				// packets to it.
-				if err := r.ipam.SetIPActiveWithUserInfo(ip, username, hostname); err != nil {
+				if err := r.ipam.SetIPActiveWithUserInfo(ip, username, hostname, session); err != nil {
 					glog.Errorf("Unable to mark IP %v in use", ip)
 					return
 				}

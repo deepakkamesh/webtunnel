@@ -20,6 +20,7 @@ const (
 type UserInfo struct {
 	username, hostname string
 	sessionStart       time.Time
+	session            string
 }
 
 // ipData represents data associated for each IP.
@@ -93,9 +94,10 @@ func (i *IPPam) AcquireIP(data interface{}) (string, error) {
 
 // SetIPActiveWithUserInfo marks the IP as in use. IP is not considered active until this function is called.
 // Also adds the username and hostname information associated with the IP connection.
-func (i *IPPam) SetIPActiveWithUserInfo(ip, username, hostname string) error {
+func (i *IPPam) SetIPActiveWithUserInfo(ip, username, hostname, session string) error {
 	i.lock.Lock()
 	defer i.lock.Unlock()
+
 
 	if _, exists := i.allocations[ip]; !exists {
 		return fmt.Errorf("IP not available")
@@ -104,7 +106,8 @@ func (i *IPPam) SetIPActiveWithUserInfo(ip, username, hostname string) error {
 	i.allocations[ip].userinfo = &UserInfo{
 		username:     username,
 		hostname:     hostname,
-		sessionStart: time.Now(),
+		sessionStart: time.Now(), // need to do this only if new session
+		session:      session,
 	}
 	return nil
 }
