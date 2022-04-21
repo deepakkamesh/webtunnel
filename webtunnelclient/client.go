@@ -202,7 +202,8 @@ func (w *WebtunnelClient) configureInterface() error {
 	if err := w.wsconn.ReadJSON(cfg); err != nil {
 		return err
 	}
-	glog.V(1).Infof("Retrieved config from server %v", *cfg)
+	glog.V(1).Infof("Retrieved config from server %+v", *cfg)
+	glog.V(1).Infof("Retrieved config from server %+v", *cfg.ServerInfo)
 
 	var dnsIPs []net.IP
 	for _, v := range cfg.DNS {
