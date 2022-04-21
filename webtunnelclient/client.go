@@ -54,7 +54,10 @@ type WebtunnelClient struct {
 	ifce         *Interface             // Struct to hold interface configuration.
 	userInitFunc func(*Interface) error // User supplied callback for OS initialization.
 	wsWriteLock  sync.Mutex             // Lock for Websocket Writes.
+	wsReadLock   sync.Mutex             // Lock for Websocket Reads.
 	metricsLock  sync.Mutex             // Lock for Metrics Writes.
+	ifReadLock   sync.Mutex             // Lock for Interface Reads.
+	ifWriteLock  sync.Mutex             // Lock for Interface Writes.
 	packetCnt    int                    // Count of packets.
 	bytesCnt     int                    // Count of bytes.
 	serverIPPort string                 // Websocket serverIP:Port.
@@ -296,7 +299,9 @@ func (w *WebtunnelClient) processWSPacket() {
 
 	for {
 		// Read packet from websocket.
+		w.wsReadLock.Lock()
 		mt, pkt, err := w.wsconn.ReadMessage()
+		w.wsReadLock.Unlock()
 		if err != nil {
 			// Gracefully exit goroutine.
 			if w.isStopped {
@@ -330,7 +335,9 @@ func (w *WebtunnelClient) processWSPacket() {
 		}
 
 		// Send packet to network interface.
+		w.ifWriteLock.Lock()
 		n, err := w.ifce.Write(pkt)
+		w.ifWriteLock.Unlock()
 		if err != nil {
 			// Gracefully exit goroutine.
 			if w.isStopped {
@@ -354,7 +361,9 @@ func (w *WebtunnelClient) processNetPacket() {
 
 	for {
 		// Read from TUN/TAP network interface.
+		w.ifReadLock.Lock()
 		n, err := w.ifce.Read(pkt)
+		w.ifReadLock.Unlock()
 		if err != nil {
 			// Gracefully exit goroutine.
 			if w.isStopped {
@@ -517,7 +526,10 @@ func (w *WebtunnelClient) handleDHCP(packet gopacket.Packet) error {
 		return fmt.Errorf("error serializelayer %s", err)
 	}
 	wc.PrintPacketEth(buffer.Bytes(), "DHCP Reply")
-	if _, err := w.ifce.Write(buffer.Bytes()); err != nil {
+	w.ifWriteLock.Lock()
+	_, err := w.ifce.Write(buffer.Bytes())
+	w.ifWriteLock.Unlock()
+	if err != nil {
 		// Gracefully exit goroutine.
 		if w.isStopped {
 			return nil
@@ -563,7 +575,10 @@ func (w *WebtunnelClient) handleArp(packet gopacket.Packet) error {
 		return fmt.Errorf("error Serializelayer %s", err)
 	}
 	wc.PrintPacketEth(buffer.Bytes(), "ARP Response")
-	if _, err := w.ifce.Write(buffer.Bytes()); err != nil {
+	w.ifWriteLock.Lock()
+	_, err := w.ifce.Write(buffer.Bytes())
+	w.ifWriteLock.Unlock()
+	if err != nil {
 		// Gracefully exit goroutine.
 		if w.isStopped {
 			return nil
