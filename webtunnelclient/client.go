@@ -102,6 +102,7 @@ func NewWebtunnelClient(serverIPPort string, wsDialer *websocket.Dialer,
 		Error:        make(chan error),
 		isNetReady:   false,
 		isStopped:    false,
+		isWSReady:    false,
 		serverIPPort: serverIPPort,
 		wsDialer:     wsDialer,
 		devType:      devType,
@@ -136,6 +137,7 @@ func (w *WebtunnelClient) Start() error {
 		return err
 	}
 	w.wsconn = wsconn
+	w.isWSReady = true
 
 	// Start network interface.
 	handle, err := NewWaterInterface(water.Config{
@@ -246,6 +248,13 @@ func (w *WebtunnelClient) Retry() error {
 	if err != nil {
 		return err
 	}
+	wsconn, _, err := w.wsDialer.Dial(u.String(), nil)
+	if err != nil {
+		return err
+	}
+	w.wsconn = wsconn
+	w.isWSReady = true
+
 	configString := "getConfig" + " " + userinfo + " " + w.session
 	if err := w.wsconn.WriteMessage(websocket.TextMessage, []byte(configString)); err != nil {
 		return err
