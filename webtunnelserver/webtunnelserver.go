@@ -373,6 +373,10 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 	for {
 		mt, message, err := conn.ReadMessage()
 		if err != nil {
+			// TODO: add logic to not release IP if abnormal closure
+			// since we are going to try to reconnect
+			// we will release the IP after a specific session timeout or
+			// connection attempt counter threshold
 			r.ipam.ReleaseIP(ip)
 			if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
 				glog.V(1).Infof("connection closed for %s", ip)
