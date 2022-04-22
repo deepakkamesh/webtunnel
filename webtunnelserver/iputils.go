@@ -98,7 +98,6 @@ func (i *IPPam) SetIPActiveWithUserInfo(ip, username, hostname, session string) 
 	i.lock.Lock()
 	defer i.lock.Unlock()
 
-
 	if _, exists := i.allocations[ip]; !exists {
 		return fmt.Errorf("IP not available")
 	}

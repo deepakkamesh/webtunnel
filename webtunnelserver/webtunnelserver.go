@@ -290,7 +290,6 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 
 		switch mt {
 		case websocket.TextMessage: // Config message.
-			
 
 			glog.V(1).Infof("New connection from %s", ip)
 			msg := strings.Split(string(message), " ")
@@ -333,7 +332,7 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 					tnow := strconv.Itoa(int(time.Now().Unix()))
 					session = tnow + randomString()
 				} else {
-
+					glog.Infof("Client is providing existing session information: %v", session)
 				}
 
 				cfg := &wc.ClientConfig{
@@ -342,7 +341,10 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 					RoutePrefix: r.routePrefix,
 					GWIp:        r.gwIP,
 					DNS:         r.dnsIPs,
-					ServerInfo:  &wc.ServerInfo{Hostname: serverHostname},
+					ServerInfo: &wc.ServerInfo{
+						Hostname: serverHostname,
+						Session:  session,
+					},
 				}
 				if err := conn.WriteJSON(cfg); err != nil {
 					glog.Warningf("error sending config to client: %v", err)
