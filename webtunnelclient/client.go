@@ -5,7 +5,6 @@ See examples for client implementation.
 package webtunnelclient
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"net"
@@ -119,7 +118,9 @@ func (w *WebtunnelClient) PingHandler(wsConn *websocket.Conn) func(appStr string
 		buf := make([]byte, binary.MaxVarintLen64)
 		tV := time.Now().UTC().UnixNano()
 		binary.PutVarint(buf, tV-val) // we will send the servertime - our time
-		wsConn.WriteControl(websocket.PongMessage, buf, time.Now().Add(time.Duration(5*time.Second)))
+		if err := wsConn.WriteControl(websocket.PongMessage, buf, time.Now().Add(time.Duration(5*time.Second))); err != nil {
+			glog.Warningf("pong failed: %v", err)
+		}
 		return nil
 	}
 }
@@ -134,6 +135,8 @@ func (w *WebtunnelClient) Start() error {
 		return err
 	}
 	w.wsconn = wsconn
+
+	w.wsconn.SetPingHandler(w.PingHandler(wsconn))
 
 	// Start network interface.
 	handle, err := NewWaterInterface(water.Config{
@@ -490,7 +493,7 @@ func (w *WebtunnelClient) handleDHCP(packet gopacket.Packet) error {
 	case layers.DHCPMsgTypeRequest:
 		// If the requested/client IP is not the same as from the config force a NAK
 		// to start the discovery process again.
-		if bytes.Compare(reqIP, w.ifce.IP) == 0 || bytes.Compare(dhcp.ClientIP, w.ifce.IP) == 0 {
+		if net.IP.Equal(reqIP, w.ifce.IP) || net.IP.Equal(dhcp.ClientIP, w.ifce.IP) {
 			dhcpl.Options = w.buildDHCPopts(w.ifce.LeaseTime, layers.DHCPMsgTypeAck)
 		} else {
 			dhcpl.Options = w.buildDHCPopts(w.ifce.LeaseTime, layers.DHCPMsgTypeNak)

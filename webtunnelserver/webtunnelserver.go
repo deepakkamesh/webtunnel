@@ -182,8 +182,10 @@ func (r *WebTunnelServer) PongHandler(ip string) func(string) error {
 // Those are used to measure the latency seen with the clients.
 func (r *WebTunnelServer) processPings() {
 	// Small delay before sending pings
+	glog.Info("Processing pings")
 	time.Sleep(60 * time.Second)
 	for {
+		glog.Info("Iterating among connections")
 		for ip, wsConn := range r.conns {
 			// Send ping (Pong handler was setup soon after when wsConn was created)
 			buf := make([]byte, binary.MaxVarintLen64)
@@ -191,8 +193,11 @@ func (r *WebTunnelServer) processPings() {
 			binary.PutVarint(buf, tV)
 			if err := wsConn.WriteControl(websocket.PingMessage, buf, time.Now().Add(time.Duration(5*time.Second))); err != nil {
 				glog.Warningf("issue sending ping to %v, reason: %v", ip, err)
+			} else {
+				glog.Infof("Ping sent to %v", ip)
 			}
 		}
+		glog.Info("Waiting 60 seconds before next ping batch")
 		time.Sleep(60 * time.Second)
 	}
 }
@@ -219,6 +224,7 @@ func (r *WebTunnelServer) processTUNPacket() {
 		// Get dst IP and corresponding websocket connection.
 		packet := gopacket.NewPacket(oPkt, layers.LayerTypeIPv4, gopacket.Default)
 		ip, _ := packet.Layer(layers.LayerTypeIPv4).(*layers.IPv4)
+		ipDest := ip.DstIP.String()
 		data, err := r.ipam.GetData(ip.DstIP.String()) // data is the connection object linked to the IP
 		if err != nil {
 			glog.V(2).Infof("unsolicited packet for IP:%v", ip.DstIP.String())
@@ -228,6 +234,9 @@ func (r *WebTunnelServer) processTUNPacket() {
 		wc.PrintPacketIPv4(oPkt, "Server <- NetInterface")
 
 		ws := data.(*websocket.Conn)
+		if _, ok := r.conns[ipDest]; !ok {
+			r.conns[ipDest] = ws
+		}
 		if err := ws.WriteMessage(websocket.BinaryMessage, oPkt); err != nil {
 			// Ignore close errors.
 			if err == websocket.ErrCloseSent {
@@ -266,6 +275,9 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 		mt, message, err := conn.ReadMessage()
 		if err != nil {
 			r.ipam.ReleaseIP(ip)
+			if _, ok := r.conns[ip]; ok {
+				delete(r.conns, ip)
+			}
 			if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
 				glog.V(1).Infof("connection closed for %s", ip)
 				return
