@@ -219,6 +219,7 @@ func (r *WebTunnelServer) processTUNPacket() {
 		// Get dst IP and corresponding websocket connection.
 		packet := gopacket.NewPacket(oPkt, layers.LayerTypeIPv4, gopacket.Default)
 		ip, _ := packet.Layer(layers.LayerTypeIPv4).(*layers.IPv4)
+		ipDest := ip.DstIP.String()
 		data, err := r.ipam.GetData(ip.DstIP.String()) // data is the connection object linked to the IP
 		if err != nil {
 			glog.V(2).Infof("unsolicited packet for IP:%v", ip.DstIP.String())
@@ -228,6 +229,9 @@ func (r *WebTunnelServer) processTUNPacket() {
 		wc.PrintPacketIPv4(oPkt, "Server <- NetInterface")
 
 		ws := data.(*websocket.Conn)
+		if _, ok := r.conns[ipDest]; !ok {
+			r.conns[ipDest] = ws
+		}
 		if err := ws.WriteMessage(websocket.BinaryMessage, oPkt); err != nil {
 			// Ignore close errors.
 			if err == websocket.ErrCloseSent {
@@ -266,6 +270,9 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 		mt, message, err := conn.ReadMessage()
 		if err != nil {
 			r.ipam.ReleaseIP(ip)
+			if _, ok := r.conns[ip]; ok {
+				delete(r.conns, ip)
+			}
 			if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
 				glog.V(1).Infof("connection closed for %s", ip)
 				return
