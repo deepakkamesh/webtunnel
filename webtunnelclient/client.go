@@ -118,7 +118,9 @@ func (w *WebtunnelClient) PingHandler(wsConn *websocket.Conn) func(appStr string
 		buf := make([]byte, binary.MaxVarintLen64)
 		tV := time.Now().UTC().UnixNano()
 		binary.PutVarint(buf, tV-val) // we will send the servertime - our time
-		wsConn.WriteControl(websocket.PongMessage, buf, time.Now().Add(time.Duration(5*time.Second)))
+		if err := wsConn.WriteControl(websocket.PongMessage, buf, time.Now().Add(time.Duration(5*time.Second))); err != nil {
+			glog.Warningf("pong failed: %v", err)
+		}
 		return nil
 	}
 }

@@ -182,8 +182,10 @@ func (r *WebTunnelServer) PongHandler(ip string) func(string) error {
 // Those are used to measure the latency seen with the clients.
 func (r *WebTunnelServer) processPings() {
 	// Small delay before sending pings
+	glog.Info("Processing pings")
 	time.Sleep(60 * time.Second)
 	for {
+		glog.Info("Iterating among connections")
 		for ip, wsConn := range r.conns {
 			// Send ping (Pong handler was setup soon after when wsConn was created)
 			buf := make([]byte, binary.MaxVarintLen64)
@@ -191,8 +193,11 @@ func (r *WebTunnelServer) processPings() {
 			binary.PutVarint(buf, tV)
 			if err := wsConn.WriteControl(websocket.PingMessage, buf, time.Now().Add(time.Duration(5*time.Second))); err != nil {
 				glog.Warningf("issue sending ping to %v, reason: %v", ip, err)
+			} else {
+				glog.Infof("Ping sent to %v", ip)
 			}
 		}
+		glog.Info("Waiting 60 seconds before next ping batch")
 		time.Sleep(60 * time.Second)
 	}
 }
