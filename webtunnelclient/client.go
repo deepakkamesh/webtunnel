@@ -5,7 +5,6 @@ See examples for client implementation.
 package webtunnelclient
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"net"
@@ -492,7 +491,7 @@ func (w *WebtunnelClient) handleDHCP(packet gopacket.Packet) error {
 	case layers.DHCPMsgTypeRequest:
 		// If the requested/client IP is not the same as from the config force a NAK
 		// to start the discovery process again.
-		if bytes.Equal(reqIP, w.ifce.IP) || bytes.Equal(dhcp.ClientIP, w.ifce.IP) {
+		if net.IP.Equal(reqIP, w.ifce.IP) || net.IP.Equal(dhcp.ClientIP, w.ifce.IP) {
 			dhcpl.Options = w.buildDHCPopts(w.ifce.LeaseTime, layers.DHCPMsgTypeAck)
 		} else {
 			dhcpl.Options = w.buildDHCPopts(w.ifce.LeaseTime, layers.DHCPMsgTypeNak)
