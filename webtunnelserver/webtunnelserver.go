@@ -225,15 +225,16 @@ func (r *WebTunnelServer) processTUNPacket() {
 		packet := gopacket.NewPacket(oPkt, layers.LayerTypeIPv4, gopacket.Default)
 		ip, _ := packet.Layer(layers.LayerTypeIPv4).(*layers.IPv4)
 		ipDest := ip.DstIP.String()
-		data, err := r.ipam.GetData(ip.DstIP.String()) // data is the connection object linked to the IP
+		data, err := r.ipam.GetData(ipDest) // data is the connection object linked to the IP
 		if err != nil {
-			glog.V(2).Infof("unsolicited packet for IP:%v", ip.DstIP.String())
+			glog.V(2).Infof("unsolicited packet for IP:%v", ipDest)
 			continue
 		}
 
 		wc.PrintPacketIPv4(oPkt, "Server <- NetInterface")
 
 		ws := data.(*websocket.Conn)
+
 		if _, ok := r.conns[ipDest]; !ok {
 			r.conns[ipDest] = ws
 		}
