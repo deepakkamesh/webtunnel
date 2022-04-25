@@ -135,9 +135,6 @@ func (w *WebtunnelClient) Start() error {
 	}
 	w.wsconn = wsconn
 
-	// Set Ping Handler
-	w.wsconn.SetPingHandler(w.PingHandler(wsconn))
-
 	// Start network interface.
 	handle, err := NewWaterInterface(water.Config{
 		DeviceType: w.devType,
