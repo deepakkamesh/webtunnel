@@ -492,7 +492,7 @@ func (w *WebtunnelClient) handleDHCP(packet gopacket.Packet) error {
 	case layers.DHCPMsgTypeRequest:
 		// If the requested/client IP is not the same as from the config force a NAK
 		// to start the discovery process again.
-		if bytes.Compare(reqIP, w.ifce.IP) == 0 || bytes.Compare(dhcp.ClientIP, w.ifce.IP) == 0 {
+		if bytes.Equal(reqIP, w.ifce.IP) || bytes.Equal(dhcp.ClientIP, w.ifce.IP) {
 			dhcpl.Options = w.buildDHCPopts(w.ifce.LeaseTime, layers.DHCPMsgTypeAck)
 		} else {
 			dhcpl.Options = w.buildDHCPopts(w.ifce.LeaseTime, layers.DHCPMsgTypeNak)
