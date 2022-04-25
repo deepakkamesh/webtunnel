@@ -136,8 +136,6 @@ func (w *WebtunnelClient) Start() error {
 	}
 	w.wsconn = wsconn
 
-	w.wsconn.SetPingHandler(w.PingHandler(wsconn))
-
 	// Start network interface.
 	handle, err := NewWaterInterface(water.Config{
 		DeviceType: w.devType,
@@ -158,6 +156,9 @@ func (w *WebtunnelClient) Start() error {
 
 	// isStopped is set true in Stop(). Used to gracefully exit packet processors.
 	w.isStopped = false
+
+	// Set Ping Handler
+	w.wsconn.SetPingHandler(w.PingHandler(w.wsconn))
 
 	// Start packet processors.
 	go w.processNetPacket()
