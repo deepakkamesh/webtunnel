@@ -252,6 +252,7 @@ func (w *WebtunnelClient) Retry() error {
 	if err != nil {
 		return err
 	}
+	u := url.URL{Scheme: w.scheme, Host: w.serverIPPort, Path: "/ws"}
 	wsconn, _, err := w.wsDialer.Dial(u.String(), nil)
 	if err != nil {
 		return err
@@ -275,7 +276,7 @@ func (w *WebtunnelClient) Retry() error {
 			cfg.ServerInfo.Session,
 		)
 	}
-	if net.ParseIP(cfg.IP).To4() != w.ifce.IP {
+	if !net.IP.Equal(net.ParseIP(cfg.IP).To4(), w.ifce.IP) {
 		return fmt.Errorf("Reconnect mismatch on IP, client wants: %v but server gives: %v",
 			w.ifce.IP,
 			net.ParseIP(cfg.IP).To4(),
