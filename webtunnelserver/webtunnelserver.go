@@ -261,10 +261,10 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 	}
 	defer conn.Close()
 
+	var ip string
 	// Process config packet first
-	var ip, session string
-
-	for {
+	configPending := true
+	for configPending {
 		mt, message, err := conn.ReadMessage()
 		if err != nil {
 			if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
@@ -288,9 +288,9 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 					hostname = msg[2]
 
 					// Get IP and add to ip management.
-					ip, err := r.ipam.AcquireIP(conn)
+					ip, err = r.ipam.AcquireIP(conn)
 					if err != nil {
-						glog.Errorf("Error acquiring IP:%v", err)
+						glog.Errorf("Error acquiring IP: %v", err)
 						return
 					}
 				} else if len(msg) == 4 {
@@ -315,7 +315,7 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 				if session == "" {
 					tnow := strconv.Itoa(int(time.Now().Unix()))
 					session = tnow + randomString()
-					glog.Infof("Config request from %s@%s, session", username, hostname, session)
+					glog.Infof("Config request from %s@%s, session: %s", username, hostname, session)
 				} else {
 					glog.Infof("Client is providing existing session information: %v", session)
 					// test if session is over its lifetime
@@ -355,11 +355,11 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 					glog.Errorf("Unable to mark IP %v in use", ip)
 					return
 				}
-				break
+				configPending = false
 			}
 
 		case websocket.BinaryMessage: // Packet message.
-			r.Error <- fmt.Error("Expecting config message first")
+			r.Error <- fmt.Errorf("Expecting config message first")
 		}
 	}
 
@@ -391,7 +391,7 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 
 		switch mt {
 		case websocket.TextMessage: // Config message.
-			r.Error <- fmt.Error("Expecting only packets")
+			r.Error <- fmt.Errorf("Expecting only packets")
 
 		case websocket.BinaryMessage: // Packet message.
 			wc.PrintPacketIPv4(message, "Server <- Websocket")
