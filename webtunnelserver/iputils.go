@@ -101,13 +101,18 @@ func (i *IPPam) SetIPActiveWithUserInfo(ip, username, hostname, session string) 
 	if _, exists := i.allocations[ip]; !exists {
 		return fmt.Errorf("IP not available")
 	}
+
 	i.allocations[ip].ipStatus = ipStatusInUse
-	i.allocations[ip].userinfo = &UserInfo{
-		username:     username,
-		hostname:     hostname,
-		sessionStart: time.Now(), // need to do this only if new session
-		session:      session,
+	// check if userinfo Allocation is already done - if so this means an existing session
+	if i.allocations[ip].userinfo == nil {
+		i.allocations[ip].userinfo = &UserInfo{
+			username:     username,
+			hostname:     hostname,
+			sessionStart: time.Now(), // need to do this only if new session
+			session:      session,
+		}
 	}
+
 	return nil
 }
 
@@ -161,6 +166,28 @@ func (i *IPPam) DumpAllocations() map[string]*UserInfo {
 		allocations[k] = d
 	}
 	return allocations
+}
+
+// SessionExpired returns true if a session expired
+// If a session does not exist an error is returned
+func (i *IPPam) SessionExpired(session string) (bool, error) {
+	i.lock.Lock()
+	defer i.lock.Unlock()
+	sessionExpired := false
+	err := fmt.Errorf("Unknown Session")
+	for k, v := range i.allocations {
+		if v.userinfo.session == session {
+			err = nil
+			now := time.Now()
+			if now.After(v.userinfo.sessionStart.Add(8 * time.Hour)) {
+				sessionExpired = true
+			}
+			glog.V(1).Infof("checked expiration for ip: %v, session: %v, result: %v",
+				k, session, sessionExpired)
+		}
+	}
+
+	return sessionExpired, err
 }
 
 // AcquireSpecificIP acquires specific IP and marks it as in use.

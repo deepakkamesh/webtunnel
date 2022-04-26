@@ -312,8 +312,6 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 					hostname = msg[2]
 					session = msg[3]
 
-					// iterate on all ips to get the IP linked to this session
-
 				} else {
 					glog.Warningf("Cannot process username and hostname - using defaults")
 					username = "guest"
@@ -326,13 +324,25 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 					return
 				}
 
-				glog.Infof("Config request from %s@%s, session", username, hostname, session)
-
+				// set session tracker if new connection
 				if session == "" {
 					tnow := strconv.Itoa(int(time.Now().Unix()))
 					session = tnow + randomString()
+					glog.Infof("Config request from %s@%s, session", username, hostname, session)
 				} else {
 					glog.Infof("Client is providing existing session information: %v", session)
+					// test if session is over its lifetime
+					// we need to test at this level because a new session is not yet
+					// registered in the IP Manager struct
+					expired, err := r.ipam.SessionExpired(session)
+					if err != nil {
+						glog.V(1).Infof("Bogus session from client: %v, closing connection", session)
+						return
+					}
+					if expired {
+						glog.Infof("Session from client: %v expired, closing connection", session)
+						return
+					}
 				}
 
 				cfg := &wc.ClientConfig{
@@ -374,9 +384,12 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 		mt, message, err := conn.ReadMessage()
 		if err != nil {
 			// TODO: add logic to not release IP if abnormal closure
+			// but just set the IP status not in use
 			// since we are going to try to reconnect
 			// we will release the IP after a specific session timeout or
 			// connection attempt counter threshold
+			// We will have a goroutine check the list of connections with IP not in use
+			// and delete them every X minutes to avoid rogue IP accumulation
 			r.ipam.ReleaseIP(ip)
 			if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
 				glog.V(1).Infof("connection closed for %s", ip)
