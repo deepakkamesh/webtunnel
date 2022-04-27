@@ -59,6 +59,7 @@ type WebTunnelServer struct {
 	secure             bool                       // Start Server with https.
 	customHTTPHandlers map[string]http.Handler    // Array of custom HTTP handlers.
 	metricsLock        sync.Mutex                 // Mutex for metrics write
+	connMapLock        sync.Mutex                 // Mutex for Connection Map
 }
 
 /*
@@ -186,6 +187,7 @@ func (r *WebTunnelServer) processPings() {
 	time.Sleep(60 * time.Second)
 	for {
 		glog.Info("Iterating among connections")
+		r.connMapLock.Lock()
 		for ip, wsConn := range r.conns {
 			// Send ping (Pong handler was setup soon after when wsConn was created)
 			buf := make([]byte, binary.MaxVarintLen64)
@@ -197,6 +199,7 @@ func (r *WebTunnelServer) processPings() {
 				glog.Infof("Ping sent to %v", ip)
 			}
 		}
+		r.connMapLock.Unlock()
 		glog.Info("Waiting 60 seconds before next ping batch")
 		time.Sleep(60 * time.Second)
 	}
@@ -234,10 +237,11 @@ func (r *WebTunnelServer) processTUNPacket() {
 		wc.PrintPacketIPv4(oPkt, "Server <- NetInterface")
 
 		ws := data.(*websocket.Conn)
-
+		r.connMapLock.Lock()
 		if _, ok := r.conns[ipDest]; !ok {
 			r.conns[ipDest] = ws
 		}
+		r.connMapLock.Unlock()
 		if err := ws.WriteMessage(websocket.BinaryMessage, oPkt); err != nil {
 			// Ignore close errors.
 			if err == websocket.ErrCloseSent {
@@ -276,9 +280,11 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 		mt, message, err := conn.ReadMessage()
 		if err != nil {
 			r.ipam.ReleaseIP(ip)
+			r.connMapLock.Lock()
 			if _, ok := r.conns[ip]; ok {
 				delete(r.conns, ip)
 			}
+			r.connMapLock.Unlock()
 			if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
 				glog.V(1).Infof("connection closed for %s", ip)
 				return
