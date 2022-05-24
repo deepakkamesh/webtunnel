@@ -126,7 +126,7 @@ func (i *IPPam) GetUserinfo(ip string) (UserInfo, error) {
 	defer i.lock.Unlock()
 
 	if v, exists := i.allocations[ip]; !exists || v.ipStatus != ipStatusInUse {
-		return nil, fmt.Errorf("IP not available or not marked in use")
+		return UserInfo{}, fmt.Errorf("IP not available or not marked in use")
 	}
 	return *i.allocations[ip].userinfo, nil
 }
