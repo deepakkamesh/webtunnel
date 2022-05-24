@@ -174,7 +174,7 @@ func (r *WebTunnelServer) PongHandler(ip string) func(string) error {
 	return func(aStr string) error {
 		bt := []byte(aStr)
 		val, _ := binary.Varint(bt)
-		glog.V(1).Infof("Client %v answered, diff is %v", ip, val)
+		glog.V(2).Infof("Client %v answered, diff is %v", ip, val)
 		return nil
 	}
 }
@@ -196,7 +196,7 @@ func (r *WebTunnelServer) processPings() {
 			if err := wsConn.WriteControl(websocket.PingMessage, buf, time.Now().Add(time.Duration(5*time.Second))); err != nil {
 				glog.Warningf("issue sending ping to %v, reason: %v", ip, err)
 			} else {
-				glog.Infof("Ping sent to %v", ip)
+				glog.V(2).Infof("Ping sent to %v", ip)
 			}
 		}
 		r.connMapLock.Unlock()
@@ -230,7 +230,7 @@ func (r *WebTunnelServer) processTUNPacket() {
 		ipDest := ip.DstIP.String()
 		data, err := r.ipam.GetData(ipDest) // data is the connection object linked to the IP
 		if err != nil {
-			glog.V(2).Infof("unsolicited packet for IP:%v", ipDest)
+			glog.Warningf("unsolicited packet for IP:%v", ipDest)
 			continue
 		}
 
