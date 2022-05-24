@@ -120,6 +120,17 @@ func (i *IPPam) GetData(ip string) (interface{}, error) {
 	return i.allocations[ip].data, nil
 }
 
+// GetUserinfo returns the UnserInfo associated with the IP.
+func (i *IPPam) GetUserinfo(ip string) (UserInfo, error) {
+	i.lock.Lock()
+	defer i.lock.Unlock()
+
+	if v, exists := i.allocations[ip]; !exists || v.ipStatus != ipStatusInUse {
+		return nil, fmt.Errorf("IP not available or not marked in use")
+	}
+	return *i.allocations[ip].userinfo, nil
+}
+
 // ReleaseIP returns IP address back to pool.
 func (i *IPPam) ReleaseIP(ip string) error {
 	i.lock.Lock()

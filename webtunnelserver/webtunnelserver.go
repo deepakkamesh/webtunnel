@@ -279,17 +279,20 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 	for {
 		mt, message, err := conn.ReadMessage()
 		if err != nil {
+			userinfo, err := r.ipam.GetUserinfo(ip)
+
 			r.ipam.ReleaseIP(ip)
+
 			r.connMapLock.Lock()
-			if _, ok := r.conns[ip]; ok {
-				delete(r.conns, ip)
-			}
+			delete(r.conns, ip)
 			r.connMapLock.Unlock()
+
 			if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
 				glog.V(1).Infof("connection closed for %s", ip)
 				return
 			}
-			glog.Warningf("error reading from websocket for %s: %s ", rcv.RemoteAddr, err)
+			glog.Warningf("error reading from websocket, client info: %s@%s client ip: %s, origin:%s, reason: %s",
+				userinfo.username, userinfo.hostname, ip, rcv.RemoteAddr, err)
 			return
 		}
 
