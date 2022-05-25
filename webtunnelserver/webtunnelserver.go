@@ -279,7 +279,7 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 	for {
 		mt, message, err := conn.ReadMessage()
 		if err != nil {
-			userinfo, err := r.ipam.GetUserinfo(ip)
+			userinfo, _ := r.ipam.GetUserinfo(ip)
 
 			r.ipam.ReleaseIP(ip)
 
