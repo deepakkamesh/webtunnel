@@ -369,6 +369,7 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 					return
 				}
 				configPending = false
+<<<<<<< HEAD
 			}
 
 		case websocket.BinaryMessage: // Packet message.
@@ -391,6 +392,45 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 			// We will have a goroutine check the list of connections with IP not in use
 			// and delete them every X minutes to avoid rogue IP accumulation
 			r.ipam.ReleaseIP(ip)
+			if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
+				glog.V(1).Infof("connection closed for %s", ip)
+				return
+=======
+>>>>>>> ece46b802b3dd6fae4ea12c731d6af6fe9d9d459
+			}
+			glog.Warningf("error reading from websocket for %s: %s ", rcv.RemoteAddr, err)
+			return
+		}
+
+		switch mt {
+		case websocket.TextMessage: // Config message.
+			r.Error <- fmt.Errorf("Expecting only packets")
+
+		case websocket.BinaryMessage: // Packet message.
+			r.Error <- fmt.Errorf("Expecting config message first")
+		}
+	}
+
+	// Create Pong Handler to handle Pings once config has been setup
+	conn.SetPongHandler(r.PongHandler(ip))
+
+	// Process websocket packets.
+	for {
+		mt, message, err := conn.ReadMessage()
+		if err != nil {
+			// TODO: add logic to not release IP if abnormal closure
+			// but just set the IP status not in use
+			// since we are going to try to reconnect
+			// we will release the IP after a specific session timeout or
+			// connection attempt counter threshold
+			// We will have a goroutine check the list of connections with IP not in use
+			// and delete them every X minutes to avoid rogue IP accumulation
+			r.ipam.ReleaseIP(ip)
+			r.connMapLock.Lock()
+			if _, ok := r.conns[ip]; ok {
+				delete(r.conns, ip)
+			}
+			r.connMapLock.Unlock()
 			if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
 				glog.V(1).Infof("connection closed for %s", ip)
 				return
