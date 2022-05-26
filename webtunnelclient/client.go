@@ -507,6 +507,10 @@ func (w *WebtunnelClient) buildDHCPopts(leaseTime uint32, msgType layers.DHCPMsg
 
 // handleDHCP handles the DHCP requests from kernel.
 func (w *WebtunnelClient) handleDHCP(packet gopacket.Packet) error {
+	if w.isNetReady {
+		// skip dhcp handling if IP is already assigned
+		return nil
+	}
 
 	dhcp := packet.Layer(layers.LayerTypeDHCPv4).(*layers.DHCPv4)
 	udp := packet.Layer(layers.LayerTypeUDP).(*layers.UDP)
