@@ -448,6 +448,7 @@ func (w *WebtunnelClient) processNetPacket() {
 			// Only send IPv4 unicast packets to reduce noisy windows machines.
 			ipv4, ok := packet.Layer(layers.LayerTypeIPv4).(*layers.IPv4)
 			if !ok || ipv4.DstIP.IsMulticast() {
+				wc.PrintPacketIPv4(oPkt, "Client  -> Websocket - droping non ipv4 packet")
 				continue
 			}
 			// Strip Ethernet header and send.
@@ -507,6 +508,10 @@ func (w *WebtunnelClient) buildDHCPopts(leaseTime uint32, msgType layers.DHCPMsg
 
 // handleDHCP handles the DHCP requests from kernel.
 func (w *WebtunnelClient) handleDHCP(packet gopacket.Packet) error {
+	if w.isNetReady {
+		glog.Info("Skipping DHCP response since IP is assigned")
+		return nil
+	}
 
 	dhcp := packet.Layer(layers.LayerTypeDHCPv4).(*layers.DHCPv4)
 	udp := packet.Layer(layers.LayerTypeUDP).(*layers.UDP)
