@@ -476,9 +476,11 @@ func (w *WebtunnelClient) buildDHCPopts(leaseTime uint32, msgType layers.DHCPMsg
 	tm := make([]byte, 4)
 	binary.BigEndian.PutUint32(tm, leaseTime)
 
+	var dnsbytes []byte
 	for _, s := range w.ifce.DNS {
-		opt = append(opt, layers.NewDHCPOption(layers.DHCPOptDNS, s))
+		dnsbytes = append(dnsbytes, s...)
 	}
+	opt = append(opt, layers.NewDHCPOption(layers.DHCPOptDNS, dnsbytes))
 	opt = append(opt, layers.NewDHCPOption(layers.DHCPOptSubnetMask, w.ifce.Netmask))
 	opt = append(opt, layers.NewDHCPOption(layers.DHCPOptLeaseTime, tm))
 	opt = append(opt, layers.NewDHCPOption(layers.DHCPOptMessageType, []byte{byte(msgType)}))
