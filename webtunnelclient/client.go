@@ -360,6 +360,10 @@ func (w *WebtunnelClient) processWSPacket() {
 			if w.isStopped {
 				return
 			}
+			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
+				glog.Warning("Terminating after graceful closure from server")
+				return
+			}
 			w.Error <- fmt.Errorf("error reading websocket %s", err)
 			return
 		}
