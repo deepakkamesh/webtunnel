@@ -360,6 +360,10 @@ func (w *WebtunnelClient) processWSPacket() {
 			if w.isStopped {
 				return
 			}
+			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
+				glog.Warning("Terminating after graceful closure from server")
+				return
+			}
 			w.Error <- fmt.Errorf("error reading websocket %s", err)
 			return
 		}
@@ -476,9 +480,11 @@ func (w *WebtunnelClient) buildDHCPopts(leaseTime uint32, msgType layers.DHCPMsg
 	tm := make([]byte, 4)
 	binary.BigEndian.PutUint32(tm, leaseTime)
 
+	var dnsbytes []byte
 	for _, s := range w.ifce.DNS {
-		opt = append(opt, layers.NewDHCPOption(layers.DHCPOptDNS, s))
+		dnsbytes = append(dnsbytes, s...)
 	}
+	opt = append(opt, layers.NewDHCPOption(layers.DHCPOptDNS, dnsbytes))
 	opt = append(opt, layers.NewDHCPOption(layers.DHCPOptSubnetMask, w.ifce.Netmask))
 	opt = append(opt, layers.NewDHCPOption(layers.DHCPOptLeaseTime, tm))
 	opt = append(opt, layers.NewDHCPOption(layers.DHCPOptMessageType, []byte{byte(msgType)}))

@@ -249,6 +249,9 @@ func (r *WebTunnelServer) processTUNPacket() {
 			if err == websocket.ErrCloseSent {
 				continue
 			}
+			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
+				continue
+			}
 			glog.Warningf("error writing to Websocket %s", err)
 			continue
 		}
@@ -279,8 +282,8 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 			delete(r.conns, ip)
 			r.connMapLock.Unlock()
 
-			if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
-				glog.V(1).Infof("connection closed for %s", ip)
+			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
+				glog.V(1).Infof("connection gracefuly closed for %s", ip)
 				return
 			}
 			glog.Warningf("error reading from websocket, client info: %s@%s client ip: %s, origin:%s, reason: %s",
