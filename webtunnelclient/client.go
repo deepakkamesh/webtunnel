@@ -146,7 +146,7 @@ func (w *WebtunnelClient) Start() error {
 
 	// Set alternate tap and interface name if specified
 	platformSpecConfig := water.PlatformSpecificParams{}
-	if w.windowsTapName != "tap0901" {
+	if w.isTap && (w.windowsTapName != "tap0901") {
 		platformSpecConfig = water.PlatformSpecificParams{
 			ComponentID: w.windowsTapName,
 			Network:     "192.168.1.0/24",
