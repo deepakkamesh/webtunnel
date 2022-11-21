@@ -46,26 +46,28 @@ type Interface struct {
 
 // WebtunnelClient represents the client struct.
 type WebtunnelClient struct {
-	Error        chan error             // Channel to handle errors from goroutines.
-	isWSReady    bool                   // true when Websocket is ready - used when reconnecting
-	isNetReady   bool                   // true when network interface is ready.
-	isStopped    bool                   // True when Stop() called.
-	wsconn       *websocket.Conn        // Websocket connection.
-	ifce         *Interface             // Struct to hold interface configuration.
-	userInitFunc func(*Interface) error // User supplied callback for OS initialization.
-	wsWriteLock  sync.Mutex             // Lock for Websocket Writes.
-	wsReadLock   sync.Mutex             // Lock for Websocket Reads.
-	metricsLock  sync.Mutex             // Lock for Metrics Writes.
-	ifReadLock   sync.Mutex             // Lock for Interface Reads.
-	ifWriteLock  sync.Mutex             // Lock for Interface Writes.
-	packetCnt    int                    // Count of packets.
-	bytesCnt     int                    // Count of bytes.
-	serverIPPort string                 // Websocket serverIP:Port.
-	wsDialer     *websocket.Dialer      // websocket dialer with options.
-	devType      water.DeviceType       // TUN/TAP.
-	scheme       string                 // Websocket Scheme.
-	leaseTime    uint32                 // DHCP lease time.
-	session      string                 // Session Tracker from Server
+	Error          chan error                    // Channel to handle errors from goroutines.
+	isWSReady      bool                          // true when Websocket is ready - used when reconnecting
+	isNetReady     bool                          // true when network interface is ready.
+	isStopped      bool                          // True when Stop() called.
+	wsconn         *websocket.Conn               // Websocket connection.
+	ifce           *Interface                    // Struct to hold interface configuration.
+	userInitFunc   func(*Interface) error        // User supplied callback for OS initialization.
+	wsWriteLock    sync.Mutex                    // Lock for Websocket Writes.
+	wsReadLock     sync.Mutex                    // Lock for Websocket Reads.
+	metricsLock    sync.Mutex                    // Lock for Metrics Writes.
+	ifReadLock     sync.Mutex                    // Lock for Interface Reads.
+	ifWriteLock    sync.Mutex                    // Lock for Interface Writes.
+	packetCnt      int                           // Count of packets.
+	bytesCnt       int                           // Count of bytes.
+	serverIPPort   string                        // Websocket serverIP:Port.
+	wsDialer       *websocket.Dialer             // websocket dialer with options.
+	devType        water.DeviceType              // TUN/TAP.
+	scheme         string                        // Websocket Scheme.
+	leaseTime      uint32                        // DHCP lease time.
+	session        string                        // Session Tracker from Server
+	isTap          bool                          // Is the webclient using a TAP interface
+	customTapParam *water.PlatformSpecificParams // Tap driver specific parameters
 }
 
 /*
@@ -108,6 +110,7 @@ func NewWebtunnelClient(serverIPPort string, wsDialer *websocket.Dialer,
 		scheme:       scheme,
 		leaseTime:    leaseTime,
 		userInitFunc: f,
+		isTap:        isTap,
 	}, nil
 }
 
@@ -140,10 +143,16 @@ func (w *WebtunnelClient) Start() error {
 	w.wsconn = wsconn
 	w.isWSReady = true
 
-	// Start network interface.
-	handle, err := NewWaterInterface(water.Config{
+	// Set alternate tap parameter if provided
+	wtConfig := water.Config{
 		DeviceType: w.devType,
-	})
+	}
+	if w.isTap && (w.customTapParam != nil) {
+		wtConfig.PlatformSpecificParams = *w.customTapParam
+	}
+
+	// Start network interface.
+	handle, err := NewWaterInterface(wtConfig)
 	if err != nil {
 		return fmt.Errorf("error creating int %s", err)
 	}
@@ -631,6 +640,17 @@ func (w *WebtunnelClient) handleArp(packet gopacket.Packet) error {
 		SrcMAC:       w.ifce.GWHWAddr,
 		DstMAC:       eth.SrcMAC,
 		EthernetType: layers.EthernetTypeARP,
+	}
+
+	// If the reply if for the VM TAP IP the source HW must be the TAP interface MAC addr
+	// Otherwise some Os could detect IP conflicts
+	if net.IP.Equal(net.IP(arpl.SourceProtAddress), w.ifce.IP) {
+		if w.ifce.LocalHWAddr == nil {
+			glog.V(2).Info("Interface is not yet ready - skip arp reply for the VM itself")
+			return nil
+		}
+		arpl.SourceHwAddress = w.ifce.LocalHWAddr
+		ethl.SrcMAC = w.ifce.LocalHWAddr
 	}
 
 	opts := gopacket.SerializeOptions{FixLengths: true, ComputeChecksums: true}
