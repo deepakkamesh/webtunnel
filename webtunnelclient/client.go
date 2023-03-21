@@ -114,6 +114,12 @@ func NewWebtunnelClient(serverIPPort string, wsDialer *websocket.Dialer,
 	}, nil
 }
 
+// SetTapInterface sets the Tap ComponentId for Windows tap interface
+// It will set it only if the value is different from tap0901 which is the default
+func (w *WebtunnelClient) SetTapInterface(customTapParam *water.PlatformSpecificParams) {
+	w.customTapParam = customTapParam
+}
+
 // PingHandler will return the function to handle the Ping sent from the server.
 // It sends the time diff seen between the client and server.
 func (w *WebtunnelClient) PingHandler(wsConn *websocket.Conn) func(appStr string) error {
