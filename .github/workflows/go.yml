@@ -19,14 +19,14 @@ jobs:
         go-version: 1.18
     - name: Install Deps
       run: |
-        go get -u github.com/deepakkamesh/webtunnel/webtunnelserver
-        go get -u github.com/deepakkamesh/webtunnel/webtunnelcommon
-        go get -u github.com/golang/glog
-        go get -u github.com/google/gopacket
-        go get -u github.com/google/gopacket/layers
-        go get -u github.com/gorilla/websocket
-        go get -u github.com/songgao/water
-        go get -u github.com/golang/mock/gomock
+        go install github.com/deepakkamesh/webtunnel/webtunnelserver@latest
+        go install github.com/deepakkamesh/webtunnel/webtunnelcommon@latest
+        go install github.com/golang/glog@latest
+        go install github.com/google/gopacket@latest
+        go install github.com/google/gopacket/layers@latest
+        go install github.com/gorilla/websocket@latest
+        go install github.com/songgao/water@latest
+        go install github.com/golang/mock/gomock@latest
 
     - name: Build Server
       run: go build -v ./examples/server.go
