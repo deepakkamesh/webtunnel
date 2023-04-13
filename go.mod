@@ -17,3 +17,5 @@ require (
 	github.com/nsf/termbox-go v1.1.1 // indirect
 	golang.org/x/sys v0.6.0 // indirect
 )
+
+replace webtunnel => github.com/deepakkamesh/webtunnel latest
