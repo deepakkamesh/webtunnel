@@ -1,9 +1,9 @@
-module webtunnel
+module github.com/deepakkamesh/webtunnel
 
 go 1.18
 
 require (
-	github.com/deepakkamesh/webtunnel v0.0.0-20221221175546-b561f2478d50
+	github.com/deepakkamesh/webtunnel v0.0.0-20230321151139-bf70c1946e9a
 	github.com/golang/glog v1.1.0
 	github.com/golang/mock v1.6.0
 	github.com/google/gopacket v1.1.19
@@ -18,4 +18,3 @@ require (
 	golang.org/x/sys v0.6.0 // indirect
 )
 
-replace webtunnel => github.com/deepakkamesh/webtunnel latest
