@@ -3,7 +3,7 @@ module github.com/deepakkamesh/webtunnel
 go 1.19
 
 require (
-	github.com/golang/glog v1.1.0
+	github.com/golang/glog v1.1.1
 	github.com/golang/mock v1.6.0
 	github.com/google/gopacket v1.1.19
 	github.com/gorilla/websocket v1.5.0
@@ -14,6 +14,5 @@ require (
 require (
 	github.com/mattn/go-runewidth v0.0.9 // indirect
 	github.com/nsf/termbox-go v1.1.1 // indirect
-	golang.org/x/sys v0.6.0 // indirect
+	golang.org/x/sys v0.7.0 // indirect
 )
-
