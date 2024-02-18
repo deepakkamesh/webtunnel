@@ -21,8 +21,8 @@ func main() {
 	// Initialize and Startup Webtunnel.
 	glog.Warning("Starting WebTunnel...")
 
-	// Create a dialer with options.
-	wsDialer := websocket.Dialer{}
+	// Create a dialer with options and support of Proxy Environment
+	wsDialer := *websocket.DefaultDialer
 	wsDialer.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 
 	// Initialize the client.

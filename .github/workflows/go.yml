@@ -1,4 +1,4 @@
-name: Webtunnel 
+name: Webtunnel
 
 on:
   push:
@@ -16,7 +16,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v2
       with:
-        go-version: 1.15
+        go-version: 1.19
     - name: Install Deps
       run: |
         go get -u github.com/deepakkamesh/webtunnel/webtunnelserver
@@ -33,7 +33,7 @@ jobs:
 
     - name: Build Client
       run: go build -v ./examples/webtunclient.go ./examples/webtunclient_linux.go
-      
+
     - name: Test Client
       run: go test -v ./webtunnelclient/
 
