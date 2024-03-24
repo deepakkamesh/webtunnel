@@ -172,13 +172,13 @@ func (r *WebTunnelServer) Stop() {
 	// TODO: add logic to signal
 	// processTunPacket processPings and HTTP handlers
 	// that the WebtunnelServer session should end.
-
 	// As part of shuting down the Webtunnel Server
-	// we need to close the Error Channel so anything
+	// we would need to close the Error Channel so anything
 	// waiting on the Error channel will stop waiting
-	// and exit.
-	close(r.Error)
-
+	// and exit. But the server would definitelt exit in panic
+	// state if goroutines potentially writign in r.Error
+	// are still active.
+	r.Error <- nil
 }
 
 // PongHandler handles the pong messages from a client
