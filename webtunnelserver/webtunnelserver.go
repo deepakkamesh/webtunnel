@@ -161,7 +161,7 @@ func (r *WebTunnelServer) Start() {
 	go r.processTUNPacket()
 
 	// Routinely sends Ping packets to the Websocket interface.
-	// Use to calculate clients average latency.
+	// Used to calculate clients average latency.
 	go r.processPings()
 }
 
@@ -256,7 +256,16 @@ func (r *WebTunnelServer) processTUNPacket() {
 	}
 }
 
+// releaseIP removes an ip from the connection tracking manager and connection map
+func (r *WebTunnelServer) releaseIP(ip string) {
+	r.ipam.ReleaseIP(ip)
+	r.connMapLock.Lock()
+	delete(r.conns, ip)
+	r.connMapLock.Unlock()
+}
+
 // wsEndpoint defines HTTP Websocket Path and upgrades the HTTP connection.
+// Websocket packets are then processed as they arrive.
 func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 	// Upgrade HTTP connection to a WebSocket connection.
 	conn, err := upgrader.Upgrade(w, rcv, nil)
@@ -284,11 +293,7 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 		if err != nil {
 			userinfo, _ := r.ipam.GetUserinfo(ip)
 
-			r.ipam.ReleaseIP(ip)
-
-			r.connMapLock.Lock()
-			delete(r.conns, ip)
-			r.connMapLock.Unlock()
+			r.releaseIP(ip)
 
 			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
 				glog.V(1).Infof("connection gracefuly closed for %s", ip)
@@ -300,63 +305,76 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 		}
 
 		switch mt {
-		case websocket.TextMessage: // Config message.
-			msg := strings.Split(string(message), " ")
-			if msg[0] == "getConfig" {
-				var username, hostname string
-				if len(msg) != 3 {
-					glog.Warningf("Cannot process username and hostname - using defaults")
-					username = "guest"
-					hostname = "workstation"
-				} else {
-					username = msg[1]
-					hostname = msg[2]
-				}
-
-				serverHostname, err := os.Hostname()
-				if err != nil {
-					glog.Errorf("Could not get hostname: %v", err)
-					return
-				}
-
-				glog.Infof("Config request from %s@%s", username, hostname)
-
-				cfg := &wc.ClientConfig{
-					IP:          ip,
-					Netmask:     r.tunNetmask,
-					RoutePrefix: r.routePrefix,
-					GWIp:        r.gwIP,
-					DNS:         r.dnsIPs,
-					ServerInfo:  &wc.ServerInfo{Hostname: serverHostname},
-				}
-				if err := conn.WriteJSON(cfg); err != nil {
-					glog.Warningf("error sending config to client: %v", err)
-					return
-				}
-				// Mark IP as in use so packets can be send to it. This is needed to avoid deadlock condition
-				// when a client disconnects but still packets are available in buffer for its ip and a new
-				// client acquires its ip it cannot get the config as the TUN writer is still busy trying to send
-				// packets to it.
-				if err := r.ipam.SetIPActiveWithUserInfo(ip, username, hostname); err != nil {
-					glog.Errorf("Unable to mark IP %v in use", ip)
-					return
-				}
-			}
-
-		case websocket.BinaryMessage: // Packet message.
-			wc.PrintPacketIPv4(message, "Server <- Websocket")
-			n, err := r.ifce.Write(message)
+		case websocket.TextMessage: // Config or Command message.
+			err := r.processIncomingTextMessage(conn, ip, message)
 			if err != nil {
-				r.Error <- fmt.Errorf("error writing to tunnel %s", err)
+				r.Error <- fmt.Errorf("error processing Config/Command %s", err)
 			}
-			// Add to metrics.
-			r.metricsLock.Lock()
-			r.metrics.Bytes += n
-			r.metrics.Packets++
-			r.metricsLock.Unlock()
+		case websocket.BinaryMessage: // Packet message.
+			err := r.processIncomingBinaryMessage(message)
+			if err != nil {
+				r.Error <- fmt.Errorf("error writing Binary to tunnel %s", err)
+			}
 		}
 
 	}
+}
+
+// processIncomingTextMessage process Config and Command packets coming from the websocket
+// since it is assumed we are receiving IP packets we just send them directly
+// to the tun interface for the OS to route those
+func (r *WebTunnelServer) processIncomingTextMessage(conn *websocket.Conn, ip string, message []byte) error {
+	msg := strings.Split(string(message), " ")
+	if msg[0] == "getConfig" {
+		var username, hostname string
+		if len(msg) != 3 {
+			glog.Warningf("Cannot process username and hostname - using defaults")
+			username = "guest"
+			hostname = "workstation"
+		} else {
+			username = msg[1]
+			hostname = msg[2]
+		}
+
+		serverHostname, err := os.Hostname()
+		if err != nil {
+			return fmt.Errorf("Could not get hostname: %v", err)
+		}
+
+		glog.Infof("Config request from %s@%s", username, hostname)
+
+		cfg := &wc.ClientConfig{
+			IP:          ip,
+			Netmask:     r.tunNetmask,
+			RoutePrefix: r.routePrefix,
+			GWIp:        r.gwIP,
+			DNS:         r.dnsIPs,
+			ServerInfo:  &wc.ServerInfo{Hostname: serverHostname},
+		}
+		if err := conn.WriteJSON(cfg); err != nil {
+			return fmt.Errorf("error sending config to client: %v", err)
+		}
+		// Mark IP as in use so packets can be send to it. This is needed to avoid deadlock condition
+		// when a client disconnects but still packets are available in buffer for its ip and a new
+		// client acquires its ip it cannot get the config as the TUN writer is still busy trying to send
+		// packets to it.
+		if err := r.ipam.SetIPActiveWithUserInfo(ip, username, hostname); err != nil {
+			return fmt.Errorf("Unable to mark IP %v in use", ip)
+		}
+	}
+}
+
+// processIncomingBinaryMessage process Binary packets coming from the websocket
+// since it is assumed we are receiving IP packets we just send them directly
+// to the tun interface for the OS to route those
+func (r *WebTunnelServer) processIncomingBinaryMessage(message []byte) error {
+	wc.PrintPacketIPv4(message, "Server <- Websocket")
+	n, err := r.ifce.Write(message)
+	if err != nil {
+		return fmt.Errorf("error writing to tunnel %s", err)
+	}
+	// Update metrics.
+	r.UpdateMetricsForPacket(n)
 }
 
 // httpEndpoint defines the HTTP / Path. The "Sender" will send an initial request to this URL.
@@ -389,6 +407,15 @@ func (r *WebTunnelServer) GetMetrics() *Metrics {
 // This can be called using a custom Handler for debuging purpose
 func (r *WebTunnelServer) DumpAllocations() map[string]*UserInfo {
 	return r.ipam.DumpAllocations()
+}
+
+// UpdateMetric update the metrics on the server.
+// Its is called for each packet going through an interface.
+func (r *WebTunnelServer) UpdateMetricsForPacket(n int) {
+	r.metricsLock.Lock()
+	r.metrics.Bytes += n
+	r.metrics.Packets++
+	r.metricsLock.Unlock()
 }
 
 // ResetMetrics resets the metrics on the server.
