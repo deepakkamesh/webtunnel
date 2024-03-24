@@ -60,6 +60,9 @@ type WebTunnelServer struct {
 	customHTTPHandlers map[string]http.Handler    // Array of custom HTTP handlers.
 	metricsLock        sync.Mutex                 // Mutex for metrics write
 	connMapLock        sync.Mutex                 // Mutex for Connection Map
+	shutWSProcess      chan struct{}
+	shutPingProcess    chan struct{}
+	shutTunProcess     chan struct{}
 }
 
 /*
@@ -122,6 +125,9 @@ func NewWebTunnelServer(serverIPPort, gwIP, tunNetmask, clientNetPrefix string, 
 		metrics:            &Metrics{},
 		secure:             secure,
 		customHTTPHandlers: make(map[string]http.Handler),
+		shutWSProcess:      make(chan struct{}),
+		shutPingProcess:    make(chan struct{}),
+		shutTunProcess:     make(chan struct{}),
 	}, nil
 }
 
@@ -165,20 +171,16 @@ func (r *WebTunnelServer) Start() {
 	go r.processPings()
 }
 
-// Stop the webtunnel server.
-// This function is still under implementation
-// and should not be used.
+// Stop the webtunnel server gracefully.
 func (r *WebTunnelServer) Stop() {
-	// TODO: add logic to signal
-	// processTunPacket processPings and HTTP handlers
-	// that the WebtunnelServer session should end.
-	// As part of shuting down the Webtunnel Server
-	// we would need to close the Error Channel so anything
-	// waiting on the Error channel will stop waiting
-	// and exit. But the server would definitelt exit in panic
-	// state if goroutines potentially writign in r.Error
-	// are still active.
-	r.Error <- nil
+	r.shutPingProcess <- struct{}{}
+	r.shutWSProcess <- struct{}{}
+	// This will eventually send nil to r.Error to let
+	// the Server Caller that the whole serving process is ended
+	// clearing websocket and closing interface
+	// is also handled when the processTunPacket gets
+	// the shutdown signal
+	r.shutTunProcess <- struct{}{}
 }
 
 // PongHandler handles the pong messages from a client
@@ -198,6 +200,11 @@ func (r *WebTunnelServer) processPings() {
 	glog.Info("Pings processing routine active")
 	time.Sleep(60 * time.Second)
 	for {
+		select {
+		case <-r.shutPingProcess:
+			return
+		default:
+		}
 		glog.V(1).Info("Iterating among connections for Pings")
 		r.connMapLock.Lock()
 		for ip, wsConn := range r.conns {
@@ -227,6 +234,22 @@ func (r *WebTunnelServer) processTUNPacket() {
 	var oPkt []byte
 
 	for {
+		select {
+		case <-r.shutTunProcess:
+			for ip, wsConn := range r.conns {
+				err := wsConn.Close()
+				if err != nil {
+					glog.Errorf("client %v close issue when shutting TUN process: %v", ip, err)
+				}
+			}
+			err := r.ifce.Close()
+			if err != nil {
+				glog.Errorf("interface close issue when shutting TUN process", err)
+			}
+			return
+		default:
+		}
+
 		n, err := r.ifce.Read(pkt)
 		if err != nil {
 			r.Error <- fmt.Errorf("error reading from tunnel %s", err)
@@ -302,6 +325,11 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 
 	// Process websocket packet.
 	for {
+		select {
+		case <-r.shutWSProcess:
+			return
+		default:
+		}
 		mt, message, err := conn.ReadMessage()
 		if err != nil {
 			userinfo, _ := r.ipam.GetUserinfo(ip)
