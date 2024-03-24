@@ -166,7 +166,19 @@ func (r *WebTunnelServer) Start() {
 }
 
 // Stop the webtunnel server.
+// This function is still under implementation
+// and should not be used.
 func (r *WebTunnelServer) Stop() {
+	// TODO: add logic to signal
+	// processTunPacket processPings and HTTP handlers
+	// that the WebtunnelServer session should end.
+
+	// As part of shuting down the Webtunnel Server
+	// we need to close the Error Channel so anything
+	// waiting on the Error channel will stop waiting
+	// and exit.
+	close(r.Error)
+
 }
 
 // PongHandler handles the pong messages from a client
@@ -174,7 +186,7 @@ func (r *WebTunnelServer) PongHandler(ip string) func(string) error {
 	return func(aStr string) error {
 		bt := []byte(aStr)
 		val, _ := binary.Varint(bt)
-		glog.V(2).Infof("Client %v answered, diff is %v", ip, val)
+		glog.V(2).Infof("Client %v answered, nano diff is %v", ip, val)
 		return nil
 	}
 }
@@ -183,16 +195,17 @@ func (r *WebTunnelServer) PongHandler(ip string) func(string) error {
 // Those are used to measure the latency seen with the clients.
 func (r *WebTunnelServer) processPings() {
 	// Small delay before sending pings
-	glog.Info("Processing pings")
+	glog.Info("Pings processing routine active")
 	time.Sleep(60 * time.Second)
 	for {
-		glog.Info("Iterating among connections")
+		glog.V(1).Info("Iterating among connections for Pings")
 		r.connMapLock.Lock()
 		for ip, wsConn := range r.conns {
 			// Send ping (Pong handler was setup soon after when wsConn was created)
 			buf := make([]byte, binary.MaxVarintLen64)
 			tV := time.Now().UTC().UnixNano()
 			binary.PutVarint(buf, tV)
+			// pings sent have a deadline of 5 seconds
 			if err := wsConn.WriteControl(websocket.PingMessage, buf, time.Now().Add(time.Duration(5*time.Second))); err != nil {
 				glog.Warningf("issue sending ping to %v, reason: %v", ip, err)
 			} else {
@@ -200,12 +213,14 @@ func (r *WebTunnelServer) processPings() {
 			}
 		}
 		r.connMapLock.Unlock()
-		glog.Info("Waiting 60 seconds before next ping batch")
+		glog.V(1).Info("Waiting 60 seconds before next ping batch")
 		time.Sleep(60 * time.Second)
 	}
 }
 
 // processTUNPacket processes the packets read from tunnel.
+// Packets read from the TUN interface have to be forwarded to the
+// relevant client via the appropriate websocket connection.
 func (r *WebTunnelServer) processTUNPacket() {
 	defer func() { r.Error <- nil }()
 	pkt := make([]byte, 2048)
@@ -218,11 +233,7 @@ func (r *WebTunnelServer) processTUNPacket() {
 		}
 		oPkt = pkt[:n]
 
-		// Add to metrics.
-		r.metricsLock.Lock()
-		r.metrics.Bytes += n
-		r.metrics.Packets++
-		r.metricsLock.Unlock()
+		r.updateMetricsForPacket(n)
 
 		// Get dst IP and corresponding websocket connection.
 		packet := gopacket.NewPacket(oPkt, layers.LayerTypeIPv4, gopacket.Default)
@@ -245,12 +256,14 @@ func (r *WebTunnelServer) processTUNPacket() {
 		if err := ws.WriteMessage(websocket.BinaryMessage, oPkt); err != nil {
 			// Ignore close errors.
 			if err == websocket.ErrCloseSent {
+				glog.V(2).Info("ErrCloseSent")
 				continue
 			}
 			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
+				glog.V(2).Info("writing to Closed or Shutting down Websocket")
 				continue
 			}
-			glog.Warningf("error writing to Websocket %s", err)
+			glog.Warningf("error writing to Websocket for ip: %s, %s", ipDest, err)
 			continue
 		}
 	}
@@ -373,8 +386,8 @@ func (r *WebTunnelServer) processIncomingBinaryMessage(message []byte) error {
 	if err != nil {
 		return fmt.Errorf("error writing to tunnel %s", err)
 	}
-	// Update metrics.
-	r.UpdateMetricsForPacket(n)
+
+	r.updateMetricsForPacket(n)
 }
 
 // httpEndpoint defines the HTTP / Path. The "Sender" will send an initial request to this URL.
@@ -409,9 +422,9 @@ func (r *WebTunnelServer) DumpAllocations() map[string]*UserInfo {
 	return r.ipam.DumpAllocations()
 }
 
-// UpdateMetric update the metrics on the server.
+// updateMetric update the metrics on the server.
 // Its is called for each packet going through an interface.
-func (r *WebTunnelServer) UpdateMetricsForPacket(n int) {
+func (r *WebTunnelServer) updateMetricsForPacket(n int) {
 	r.metricsLock.Lock()
 	r.metrics.Bytes += n
 	r.metrics.Packets++
