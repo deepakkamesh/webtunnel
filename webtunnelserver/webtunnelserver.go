@@ -238,20 +238,12 @@ func (r *WebTunnelServer) processTUNPacket() {
 	var oPkt []byte
 
 	for {
-		select {
-		case <-r.shutTunProcess:
-			for ip, wsConn := range r.conns {
-				err := wsConn.Close()
-				if err != nil {
-					glog.Errorf("client %v close issue when shutting TUN process: %v", ip, err)
-				}
-			}
+		if r.turnOff {
 			err := r.ifce.Close()
 			if err != nil {
 				glog.Errorf("interface close issue when shutting TUN process", err)
 			}
 			return
-		default:
 		}
 
 		n, err := r.ifce.Read(pkt)
@@ -405,6 +397,7 @@ func (r *WebTunnelServer) processIncomingTextMessage(conn *websocket.Conn, ip st
 			return fmt.Errorf("Unable to mark IP %v in use", ip)
 		}
 	}
+	return nil
 }
 
 // processIncomingBinaryMessage process Binary packets coming from the websocket
@@ -418,6 +411,7 @@ func (r *WebTunnelServer) processIncomingBinaryMessage(message []byte) error {
 	}
 
 	r.updateMetricsForPacket(n)
+	return nil
 }
 
 // httpEndpoint defines the HTTP / Path. The "Sender" will send an initial request to this URL.
