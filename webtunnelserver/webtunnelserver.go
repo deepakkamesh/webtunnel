@@ -107,6 +107,9 @@ func NewWebTunnelServer(serverIPPort, gwIP, tunNetmask, clientNetPrefix string, 
 	if err := ipam.AcquireSpecificIP(gwIP, struct{}{}); err != nil {
 		return nil, err
 	}
+
+	metrics := &Metrics{}
+	metrics.MaxUsers = getMaxUsers(clientNetPrefix)
 	return &WebTunnelServer{
 		serverIPPort:       serverIPPort,
 		ifce:               ifce,
@@ -120,7 +123,7 @@ func NewWebTunnelServer(serverIPPort, gwIP, tunNetmask, clientNetPrefix string, 
 		httpsCertFile:      httpsCertFile,
 		Error:              make(chan error),
 		dnsIPs:             dnsIPs,
-		metrics:            &Metrics{},
+		metrics:            metrics,
 		secure:             secure,
 		customHTTPHandlers: make(map[string]http.Handler),
 		turnOff:            false,
@@ -137,8 +140,25 @@ func (r *WebTunnelServer) SetCustomHandler(endpoint string, h http.Handler) erro
 }
 
 // Start the webtunnel server.
+// All processing functions are goroutines
+// The user of Webtunnel must wait on the r.Error
+// channel to know when the Server finished serving
+// Either by catching an unrecoverable error or
+// sending nil if ending gracefully.
 func (r *WebTunnelServer) Start() {
 
+	// Serve Clients and process their Packets via Websocket
+	go r.serveClients()
+
+	// Read and process packets from the tunnel interface.
+	go r.processTUNPacket()
+
+	// Routinely sends Ping packets to the Websocket interface.
+	// Used to calculate clients average latency.
+	go r.processPings()
+}
+
+func (r *WebTunnelServer) serveClients() {
 	// Start the HTTP Server.
 	http.HandleFunc("/", r.httpEndpoint)
 	http.HandleFunc("/ws", r.wsEndpoint)
@@ -151,20 +171,10 @@ func (r *WebTunnelServer) Start() {
 	}
 
 	if r.secure {
-		go func() { log.Fatal(http.ListenAndServeTLS(r.serverIPPort, r.httpsCertFile, r.httpsKeyFile, nil)) }()
+		log.Fatal(http.ListenAndServeTLS(r.serverIPPort, r.httpsCertFile, r.httpsKeyFile, nil))
 	} else {
-		go func() { log.Fatal(http.ListenAndServe(r.serverIPPort, nil)) }()
+		log.Fatal(http.ListenAndServe(r.serverIPPort, nil))
 	}
-
-	// Initialise some Metrics
-	r.metrics.MaxUsers = getMaxUsers(r.clientNetPrefix)
-
-	// Read and process packets from the tunnel interface.
-	go r.processTUNPacket()
-
-	// Routinely sends Ping packets to the Websocket interface.
-	// Used to calculate clients average latency.
-	go r.processPings()
 }
 
 // Stop the webtunnel server gracefully.
