@@ -60,9 +60,7 @@ type WebTunnelServer struct {
 	customHTTPHandlers map[string]http.Handler    // Array of custom HTTP handlers.
 	metricsLock        sync.Mutex                 // Mutex for metrics write
 	connMapLock        sync.Mutex                 // Mutex for Connection Map
-	shutWSProcess      chan struct{}
-	shutPingProcess    chan struct{}
-	shutTunProcess     chan struct{}
+	turnOff            bool                       // Flag to signal server should shutdown
 }
 
 /*
@@ -125,9 +123,7 @@ func NewWebTunnelServer(serverIPPort, gwIP, tunNetmask, clientNetPrefix string, 
 		metrics:            &Metrics{},
 		secure:             secure,
 		customHTTPHandlers: make(map[string]http.Handler),
-		shutWSProcess:      make(chan struct{}),
-		shutPingProcess:    make(chan struct{}),
-		shutTunProcess:     make(chan struct{}),
+		turnOff:            false,
 	}, nil
 }
 
@@ -172,15 +168,15 @@ func (r *WebTunnelServer) Start() {
 }
 
 // Stop the webtunnel server gracefully.
+// All Websocket connections with peer will be terminated
+// The tun interface handle will be closed
+//
+//	and this will eventually send nil to r.Error to let
+//
+// the Server Caller that the whole serving process is ended
 func (r *WebTunnelServer) Stop() {
-	r.shutPingProcess <- struct{}{}
-	r.shutWSProcess <- struct{}{}
-	// This will eventually send nil to r.Error to let
-	// the Server Caller that the whole serving process is ended
-	// clearing websocket and closing interface
-	// is also handled when the processTunPacket gets
-	// the shutdown signal
-	r.shutTunProcess <- struct{}{}
+	r.turnOff = true
+
 }
 
 // PongHandler handles the pong messages from a client
@@ -200,10 +196,8 @@ func (r *WebTunnelServer) processPings() {
 	glog.Info("Pings processing routine active")
 	time.Sleep(60 * time.Second)
 	for {
-		select {
-		case <-r.shutPingProcess:
+		if r.turnOff {
 			return
-		default:
 		}
 		glog.V(1).Info("Iterating among connections for Pings")
 		r.connMapLock.Lock()
@@ -325,10 +319,8 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 
 	// Process websocket packet.
 	for {
-		select {
-		case <-r.shutWSProcess:
+		if r.turnOff {
 			return
-		default:
 		}
 		mt, message, err := conn.ReadMessage()
 		if err != nil {
