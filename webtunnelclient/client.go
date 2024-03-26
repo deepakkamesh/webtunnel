@@ -325,11 +325,11 @@ func (w *WebtunnelClient) Stop() error {
 	return nil
 }
 
-func (w* WebtunnelClient) updateMetricsForPacket(n int){
+func (w *WebtunnelClient) updateMetricsForPacket(n int) {
 	w.metricsLock.Lock()
-		w.packetCnt++
-		w.bytesCnt += n
-		w.metricsLock.Unlock()
+	w.packetCnt++
+	w.bytesCnt += n
+	w.metricsLock.Unlock()
 }
 
 // ResetMetrics reset the internal counters.

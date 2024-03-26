@@ -185,8 +185,8 @@ func (r *WebTunnelServer) serveClients() {
 //
 // the Server Caller that the whole serving process is ended
 func (r *WebTunnelServer) Stop() {
+	glog.V(1).Info("Shutting down Server gracefully")
 	r.turnOff = true
-
 }
 
 // PongHandler handles the pong messages from a client
@@ -207,6 +207,7 @@ func (r *WebTunnelServer) processPings() {
 	time.Sleep(60 * time.Second)
 	for {
 		if r.turnOff {
+			glog.V(1).Info("Exiting Ping routine")
 			return
 		}
 		glog.V(1).Info("Iterating among connections for Pings")
@@ -239,6 +240,7 @@ func (r *WebTunnelServer) processTUNPacket() {
 
 	for {
 		if r.turnOff {
+			glog.V(1).Info("Exiting TUN interface routine")
 			err := r.ifce.Close()
 			if err != nil {
 				glog.Errorf("interface close issue when shutting TUN process", err)
@@ -322,6 +324,7 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 	// Process websocket packet.
 	for {
 		if r.turnOff {
+			glog.V(1).Infof("Exiting websocket processing for ip: %v", ip)
 			return
 		}
 		mt, message, err := conn.ReadMessage()
