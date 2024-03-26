@@ -243,7 +243,7 @@ func (r *WebTunnelServer) processTUNPacket() {
 			glog.V(1).Info("Exiting TUN interface routine")
 			err := r.ifce.Close()
 			if err != nil {
-				glog.Errorf("interface close issue when shutting TUN process", err)
+				glog.Errorf("interface close issue when shutting TUN process: %v", err)
 			}
 			return
 		}
