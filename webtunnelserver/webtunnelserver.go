@@ -346,12 +346,12 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 		case websocket.TextMessage: // Config or Command message.
 			err := r.processIncomingTextMessage(conn, ip, message)
 			if err != nil {
-				r.Error <- fmt.Errorf("error processing Config/Command %s", err)
+				r.Error <- fmt.Errorf("fatal error processing Config/Command message %s", err)
 			}
 		case websocket.BinaryMessage: // Packet message.
 			err := r.processIncomingBinaryMessage(message)
 			if err != nil {
-				r.Error <- fmt.Errorf("error writing Binary to tunnel %s", err)
+				r.Error <- fmt.Errorf("fatal error writing Binary message to tunnel %s", err)
 			}
 		}
 
@@ -376,6 +376,7 @@ func (r *WebTunnelServer) processIncomingTextMessage(conn *websocket.Conn, ip st
 
 		serverHostname, err := os.Hostname()
 		if err != nil {
+			// hostname failing should be fatal
 			return fmt.Errorf("could not get hostname: %v", err)
 		}
 
@@ -390,14 +391,18 @@ func (r *WebTunnelServer) processIncomingTextMessage(conn *websocket.Conn, ip st
 			ServerInfo:  &wc.ServerInfo{Hostname: serverHostname},
 		}
 		if err := conn.WriteJSON(cfg); err != nil {
-			return fmt.Errorf("error sending config to client: %v", err)
+			// An issue here should not be fatal but logged.
+			glog.Warningf("error sending config to client: %v", err)
+			return nil
 		}
 		// Mark IP as in use so packets can be send to it. This is needed to avoid deadlock condition
 		// when a client disconnects but still packets are available in buffer for its ip and a new
 		// client acquires its ip it cannot get the config as the TUN writer is still busy trying to send
 		// packets to it.
+		// An issue here should not be fatal but logged.
 		if err := r.ipam.SetIPActiveWithUserInfo(ip, username, hostname); err != nil {
-			return fmt.Errorf("unable to mark IP %v in use", ip)
+			glog.Warningf("unable to mark IP %v in use", ip)
+			return nil
 		}
 	}
 	return nil
