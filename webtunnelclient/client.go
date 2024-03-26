@@ -283,16 +283,16 @@ func (w *WebtunnelClient) Retry() error {
 	if err := w.wsconn.ReadJSON(cfg); err != nil {
 		return err
 	}
-	glog.V(1).Infof("Retrieved config from server %v", *cfg)
+	glog.V(1).Infof("retrieved config from server %v", *cfg)
 	// verify session config from server matches current config
 	if cfg.ServerInfo.Session != w.session {
-		return fmt.Errorf("Reconnect mismatch on session, client wants: %v but server gives: %v",
+		return fmt.Errorf("reconnect mismatch on session, client wants: %v but server gives: %v",
 			w.session,
 			cfg.ServerInfo.Session,
 		)
 	}
 	if !net.IP.Equal(net.ParseIP(cfg.IP).To4(), w.ifce.IP) {
-		return fmt.Errorf("Reconnect mismatch on IP, client wants: %v but server gives: %v",
+		return fmt.Errorf("reconnect mismatch on IP, client wants: %v but server gives: %v",
 			w.ifce.IP,
 			net.ParseIP(cfg.IP).To4(),
 		)
@@ -323,6 +323,13 @@ func (w *WebtunnelClient) Stop() error {
 	w.wsconn.Close()
 	w.ifce.Close()
 	return nil
+}
+
+func (w *WebtunnelClient) updateMetricsForPacket(n int) {
+	w.metricsLock.Lock()
+	w.packetCnt++
+	w.bytesCnt += n
+	w.metricsLock.Unlock()
 }
 
 // ResetMetrics reset the internal counters.
@@ -418,10 +425,7 @@ func (w *WebtunnelClient) processWSPacket() {
 			w.Error <- fmt.Errorf("error writing to tunnel %s", err)
 			return
 		}
-		w.metricsLock.Lock()
-		w.packetCnt++
-		w.bytesCnt += n
-		w.metricsLock.Unlock()
+		w.updateMetricsForPacket(n)
 	}
 }
 
@@ -446,8 +450,7 @@ func (w *WebtunnelClient) processNetPacket() {
 		}
 		oPkt = pkt[:n]
 
-		w.packetCnt++
-		w.bytesCnt += n
+		w.updateMetricsForPacket(n)
 
 		// Special handling for TAP; ARP/DHCP.
 		if w.ifce.IsTAP() {
