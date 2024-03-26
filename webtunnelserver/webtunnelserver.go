@@ -376,7 +376,7 @@ func (r *WebTunnelServer) processIncomingTextMessage(conn *websocket.Conn, ip st
 
 		serverHostname, err := os.Hostname()
 		if err != nil {
-			return fmt.Errorf("Could not get hostname: %v", err)
+			return fmt.Errorf("could not get hostname: %v", err)
 		}
 
 		glog.Infof("Config request from %s@%s", username, hostname)
@@ -397,7 +397,7 @@ func (r *WebTunnelServer) processIncomingTextMessage(conn *websocket.Conn, ip st
 		// client acquires its ip it cannot get the config as the TUN writer is still busy trying to send
 		// packets to it.
 		if err := r.ipam.SetIPActiveWithUserInfo(ip, username, hostname); err != nil {
-			return fmt.Errorf("Unable to mark IP %v in use", ip)
+			return fmt.Errorf("unable to mark IP %v in use", ip)
 		}
 	}
 	return nil
