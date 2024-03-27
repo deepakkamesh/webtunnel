@@ -29,10 +29,10 @@ jobs:
         go get -u github.com/golang/mock/gomock
 
     - name: Build Server
-      run: go build -v ./examples/server.go
+      run: go build -v ./examples/servercli/server.go
 
     - name: Build Client
-      run: go build -v ./examples/webtunclient.go ./examples/webtunclient_linux.go
+      run: go build -v ./examples/webtunclient/webtunclient.go ./examples/webtunclient/webtunclient_linux.go
 
     - name: Test Client
       run: go test -v ./webtunnelclient/
