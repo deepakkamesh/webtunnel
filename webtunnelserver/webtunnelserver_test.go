@@ -116,13 +116,22 @@ func TestServer(t *testing.T) {
 	time.Sleep(time.Second)
 	c.Close()
 
+	// gracefully ending the server after the client connection is finished
+	// will close the TUN interface
+	mockInterface.EXPECT().Close()
+	server.Stop()
+
 	// Sleep for sometime to read all messages.
 	ticker := time.NewTicker(1 * time.Second)
 	select {
 	case <-ticker.C:
 		return
 	case err := <-server.Error:
-		t.Error(err)
+		// we are expected to get signaled the Webtunnel server is finished
+		// with nil - but if we get a real error then the test fails
+		if err != nil {
+			t.Error(err)
+		}
 	}
 }
 
