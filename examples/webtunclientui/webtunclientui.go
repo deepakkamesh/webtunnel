@@ -13,6 +13,9 @@ import (
 	"github.com/jroimartin/gocui"
 )
 
+var webtunServer = flag.String("webtunServer", "192.168.1.117:8811", "IP:PORT of webtunnel server")
+
+
 func main() {
 	flag.Parse()
 	clientui := NewclientUI()
@@ -41,7 +44,7 @@ func NewclientUI() *Clientui {
 	}
 
 	// Initialize the client.
-	client, err := webtunnelclient.NewWebtunnelClient("", &websocket.Dialer{},
+	client, err := webtunnelclient.NewWebtunnelClient(*webtunServer, &websocket.Dialer{},
 		false, InitializeOS, true, 30)
 	if err != nil {
 		return nil

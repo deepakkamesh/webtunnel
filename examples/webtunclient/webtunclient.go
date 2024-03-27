@@ -13,6 +13,8 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+var webtunServer = flag.String("webtunServer", "192.168.1.117:8811", "IP:PORT of webtunnel server")
+
 func main() {
 	flag.Parse()
 	c := make(chan os.Signal, 1)
@@ -26,7 +28,7 @@ func main() {
 	wsDialer.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 
 	// Initialize the client.
-	client, err := webtunnelclient.NewWebtunnelClient("192.168.1.117:8811", &wsDialer,
+	client, err := webtunnelclient.NewWebtunnelClient(*webtunServer, &wsDialer,
 		false, InitializeOS, true, 30)
 	if err != nil {
 		glog.Exitf("Failed to initialize client: %s", err)
