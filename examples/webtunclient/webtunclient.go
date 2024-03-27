@@ -18,7 +18,7 @@ var webtunServer = flag.String("webtunServer", "192.168.1.117:8811", "IP:PORT of
 func main() {
 	flag.Parse()
 	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
 
 	// Initialize and Startup Webtunnel.
 	glog.Warning("Starting WebTunnel...")

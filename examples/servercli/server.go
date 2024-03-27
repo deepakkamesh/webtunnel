@@ -5,7 +5,10 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/deepakkamesh/webtunnel/webtunnelserver"
@@ -16,6 +19,11 @@ type myHandle struct{}
 
 func (h *myHandle) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintln(w, "This is a custom Handler")
+}
+
+// SigNotify catches interrupts.
+func SigNotify(c chan os.Signal) {
+	signal.Notify(c, os.Interrupt, syscall.SIGINT, syscall.SIGINT)
 }
 
 func main() {
@@ -49,6 +57,10 @@ func main() {
 	// Start the server.
 	server.Start()
 
+	// Catch interrupts.
+	c := make(chan os.Signal, 1)
+	SigNotify(c)
+
 	// Print Metrics.
 	t := time.NewTicker(30 * time.Second)
 	go func() {
@@ -61,6 +73,14 @@ func main() {
 	}()
 
 	// server.Error has any unrecoverable errors that can be handled.
-	err = <-server.Error
-	glog.Exitf("Shutting down server %v", err)
+	for {
+		select {
+		case err := <-server.Error:
+				glog.Exitf("Shutting down server %v", err)
+		case <-c:
+				glog.Info("Caught Interrupt!")
+				server.Stop() // this will send an error in the Error channel
+		}
+	}
 }
+
