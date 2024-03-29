@@ -73,6 +73,15 @@ func (i *IPPam) GetAllocatedCount() int {
 	return len(i.allocations)
 }
 
+// Check if an IP requested is valid in the network
+func (ipam *IPPam) isValidIP(ipAddr string) bool {
+	ip := net.ParseIP(ipAddr)
+	if ip == nil {
+			return false // Invalid format
+	}
+	return ipam.ipnet.Contains(ip)
+}
+
 // AcquireIP gets a free IP and marks the status as requested. SetIPactive should be called
 // to make the IP active. data can be used to store any data associated with the IP.
 func (i *IPPam) AcquireIP(data interface{}) (string, error) {
@@ -163,6 +172,9 @@ func (i *IPPam) DumpAllocations() map[string]*UserInfo {
 
 // AcquireSpecificIP acquires specific IP and marks it as in use.
 func (i *IPPam) AcquireSpecificIP(ip string, data interface{}) error {
+	if ok := i.isValidIP(ip); !ok {
+		return fmt.Errorf("not a valid IP: %v", ip)
+	}
 	i.lock.Lock()
 	defer i.lock.Unlock()
 

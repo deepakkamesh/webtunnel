@@ -5,54 +5,68 @@ import (
 )
 
 func TestIP(t *testing.T) {
-	ipam, _ := NewIPPam("10.0.0.0/24")
+	ipAllocator, _ := NewIPPam("10.0.0.0/24")
 
-	err := ipam.AcquireSpecificIP("10.0.0.0", struct{}{})
-	if err == nil {
-		t.Errorf("Should not acquire broadcast or network IP")
+	testCasesAquire := []struct {
+		ipAddr           string
+		expectErrorCheck bool
+		expectedCount    int // If not expecting error
+	}{
+		{"10.0.0.0", true, 0},    // Should not acquire network IP
+		{"10.0.0.255", true, 0},  // Should not acquire broadcast IP
+		{"10.0.0.1", false, 3},
+		{"10.0.0.1", true, 0},    // Cannot aquire same IP twice
+		{"10.0.0.25", false, 4},
+		{"192.168.0.1", true, 0}, // IP not in network
+		{"10.0.0", true, 0},      // Not a valid IP
+		{"10.0.0.300", true, 0},  // Not a valid IP
+		{"hello", true, 0},       // Not a valid IP
 	}
 
-	err = ipam.AcquireSpecificIP("10.0.0.255", struct{}{})
-	if err == nil {
-		t.Errorf("Should not acquire broadcast or network IP")
+	for _, tc := range testCasesAquire {
+		if tc.expectErrorCheck {
+			err := ipAllocator.AcquireSpecificIP(tc.ipAddr, struct{}{})
+			if err == nil {
+				t.Errorf("Expected error for IP %s, got nil", tc.ipAddr)
+			}
+		} else {
+			err := ipAllocator.AcquireSpecificIP(tc.ipAddr, struct{}{})
+			if err != nil {
+				t.Errorf("Unexpected error for IP %s: %s", tc.ipAddr, err)
+			}
+			if ipAllocator.GetAllocatedCount() != tc.expectedCount {
+				t.Errorf("Incorrect allocated count after acquiring %s", tc.ipAddr)
+			}
+		}
 	}
 
-	if err := ipam.ReleaseIP("10.0.0.0"); err == nil {
-		t.Errorf("Should not release network address")
+	testCasesRelease := []struct {
+		ipAddr           string
+		expectErrorCheck bool
+		expectedCount    int // If not expecting error
+	}{
+		{"10.0.0.0", true, 0},   // Should not release network IP
+		{"10.0.0.255", true, 0}, // Should not release broadcast IP
+		{"10.0.0.1", false, 3},
+		{"10.0.0.1", true, 0},   // Should not release same IP twice
+		{"10.0.0.25", false, 2},
 	}
 
-	if err := ipam.ReleaseIP("10.0.0.255"); err == nil {
-		t.Errorf("Should not release bcast address")
-	}
-
-	ip, _ := ipam.AcquireIP(struct{}{})
-	if ip != "10.0.0.1" {
-		t.Errorf("Failed to acquire right IP expect: %s got:%s", "10.0.0.1", ip)
-	}
-
-	if i := ipam.GetAllocatedCount(); i != 3 {
-		t.Errorf("Invalid allocated count expect:3, got:%v", i)
-	}
-
-	if err := ipam.ReleaseIP("10.0.0.1"); err != nil {
-		t.Errorf("Failed to release IP expect: nil got: %s", err)
-	}
-
-	if err := ipam.ReleaseIP("10.0.0.1"); err == nil {
-		t.Errorf("Failed to release IP expect: err got: %s", err)
-	}
-
-	if i := ipam.GetAllocatedCount(); i != 2 {
-		t.Errorf("Invalid allocated count expect:2, got:%v", i)
-	}
-
-	err = ipam.AcquireSpecificIP("10.0.0.25", struct{}{})
-	if err != nil {
-		t.Errorf("Could not acquire specific IP; got %s, expect:nil", err)
-	}
-
-	if err := ipam.ReleaseIP("10.0.0.25"); err != nil {
-		t.Errorf("Failed to release IP expect: nil got: %s", err)
+	for _, tc := range testCasesRelease {
+		if tc.expectErrorCheck {
+			err := ipAllocator.ReleaseIP(tc.ipAddr)
+			if err == nil {
+				t.Errorf("Expected error for IP %s, got nil", tc.ipAddr)
+			}
+		} else {
+			err := ipAllocator.ReleaseIP(tc.ipAddr)
+			if err != nil {
+				t.Errorf("Unexpected error for IP %s: %s", tc.ipAddr, err)
+			}
+			if ipAllocator.GetAllocatedCount() != tc.expectedCount {
+				t.Errorf("Incorrect allocated count after acquiring %s", tc.ipAddr)
+			}
+		}
 	}
 }
 
