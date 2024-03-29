@@ -70,7 +70,7 @@ function setup_server() {
   gnome-terminal -- bash -c "$ssh_command -t $remotehost \
     \"echo Server session; \
     sudo if config lo:1 172.16.0.2 netmask 255.255.255.252; \
-    sudo ./server -httpsCertFile $ssl_cert \
+    sudo ./server -alsologtostderr -v 1 -httpsCertFile $ssl_cert \
     -httpsKeyFile $ssl_key\""
   gnome-terminal -- bash -c "$ssh_command -t $remotehost \
     \"echo Listener waiting...; sleep 45; echo Listening...; nc -l -k 172.16.0.2 4567\""
@@ -86,7 +86,7 @@ function setup_client() {
   # wait a bit for the tunnel to establish before attempting connection
   wait_for_command_success "nc -vz localhost 33893" 60
 
-  ./webtunclient -webtunServer localhost:33893 &
+  ./webtunclient -alsologtostderr -v 1 -webtunServer localhost:33893 &
   sleep 15;
   sudo ifconfig tun0 192.168.0.2 netmask 255.255.255.0
 
