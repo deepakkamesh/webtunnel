@@ -85,7 +85,6 @@ func TestServer(t *testing.T) {
 		}
 	})
 
-
 	t.Run("PacketHandling", func(t *testing.T) {
 		// Test packet from server -> client.
 		_, b, err := c.ReadMessage()
@@ -113,7 +112,6 @@ func TestServer(t *testing.T) {
 			t.Errorf("Users expected: 1, got: %v", metric.Users)
 		}
 	})
-
 
 	// Close connection.
 	err = c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
