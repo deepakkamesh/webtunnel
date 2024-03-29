@@ -69,11 +69,12 @@ function setup_server() {
   # so nc will start only 3 minutes later
   gnome-terminal -- bash -c "$ssh_command -t $remotehost \
     \"echo Server session; \
-    sudo if config lo:1 172.16.0.2 netmask 255.255.255.252; \
     sudo ./server -alsologtostderr -v 1 -httpsCertFile $ssl_cert \
     -httpsKeyFile $ssl_key\""
   gnome-terminal -- bash -c "$ssh_command -t $remotehost \
-    \"echo Listener waiting...; sleep 45; echo Listening...; nc -l -k 172.16.0.2 4567\""
+    \"echo Listener waiting...; sleep 45; echo Listening...; \
+    sudo if config lo:1 172.16.0.2 netmask 255.255.255.252; \
+    nc -l -k 172.16.0.2 4567\""
 
 }
 
