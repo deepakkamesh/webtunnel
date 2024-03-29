@@ -18,6 +18,29 @@ import (
 	"github.com/songgao/water"
 )
 
+func setupServerMocks(mockServerIfce *mocks.MockInterface) {
+	mockServerIfce.EXPECT().Name().Return("virt0").AnyTimes()
+	mockServerIfce.EXPECT().IsTAP().Return(false).AnyTimes()
+	// Some test packets.
+	srvPkt := createIPv4Pkt(net.IP{1, 2, 3, 1}, net.IP{192, 168, 0, 2})
+	cliPkt := createIPv4Pkt(net.IP{1, 1, 1, 1}, net.IP{192, 168, 0, 2})
+
+	// Load packet to send to client.
+	mockServerIfce.EXPECT().Read(gomock.Any()).Return(len(srvPkt), nil).SetArg(0, srvPkt).AnyTimes()
+	mockServerIfce.EXPECT().Write(cliPkt).Return(1, nil).AnyTimes()
+}
+
+func setupClientMocks(mockClientIfce *mocks.MockInterface) {
+	mockClientIfce.EXPECT().Name().Return("virt0").AnyTimes()
+	mockClientIfce.EXPECT().IsTAP().Return(false).AnyTimes()
+	// Some test packets.
+	srvPkt := createIPv4Pkt(net.IP{1, 2, 3, 1}, net.IP{192, 168, 0, 2})
+	cliPkt := createIPv4Pkt(net.IP{1, 1, 1, 1}, net.IP{192, 168, 0, 2})
+	// Load packet to send to server.
+	mockClientIfce.EXPECT().Read(gomock.Any()).Return(len(cliPkt), nil).SetArg(0, cliPkt).AnyTimes()
+	mockClientIfce.EXPECT().Write(srvPkt).Return(1, nil).AnyTimes()
+}
+
 // TestClient tests the client functionality by spinning up a test server and sending packets between them.
 // This is an end 2 end test of the client and server.
 func TestClient(t *testing.T) {
@@ -30,6 +53,7 @@ func TestClient(t *testing.T) {
 
 	// ****** Start up a test server.
 	mockServerIfce := mocks.NewMockInterface(mockCtrl)
+	setupServerMocks(mockServerIfce)
 
 	// Override server variables for testing.
 	wts.NewWaterInterface = func(c water.Config) (wc.Interface, error) {
@@ -40,29 +64,20 @@ func TestClient(t *testing.T) {
 	}
 
 	//  Server init.
-	mockServerIfce.EXPECT().Name().Return("virt0").AnyTimes()
-	mockServerIfce.EXPECT().IsTAP().Return(false).AnyTimes()
-
 	server, err := wts.NewWebTunnelServer("127.0.0.1:8811", "192.168.0.1",
 		"255.255.255.0", "192.168.0.0/24", []string{"8.8.1.1"}, []string{"1.1.1.0/24"}, false, "", "")
 	if err != nil {
 		t.Fatalf("%s %v", err, wts.InitTunnel("", "", ""))
 	}
 
-	// Some test packets.
-	srvPkt := createIPv4Pkt(net.IP{1, 2, 3, 1}, net.IP{192, 168, 0, 2})
-	cliPkt := createIPv4Pkt(net.IP{1, 1, 1, 1}, net.IP{192, 168, 0, 2})
-
-	// Load packet to send to client.
-	mockServerIfce.EXPECT().Read(gomock.Any()).Return(len(srvPkt), nil).SetArg(0, srvPkt).AnyTimes()
-	mockServerIfce.EXPECT().Write(cliPkt).Return(1, nil).AnyTimes()
-
 	server.Start()
+	defer server.Stop()
 	// Give server a bit to startup.
 	time.Sleep(1 * time.Second)
 
 	//****** Start a new client.
 	mockClientIfce := mocks.NewMockInterface(mockCtrl)
+	setupClientMocks(mockClientIfce)
 
 	// Overrides for testing.
 	NewWaterInterface = func(c water.Config) (wc.Interface, error) {
@@ -84,18 +99,11 @@ func TestClient(t *testing.T) {
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	}
 
-	mockClientIfce.EXPECT().Name().Return("virt0").AnyTimes()
-	mockClientIfce.EXPECT().IsTAP().Return(false).AnyTimes()
-
 	client, err := NewWebtunnelClient("127.0.0.1:8811", &wsDialer,
 		false, dummyInitFunc, false, 30)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// Load packet to send to server.
-	mockClientIfce.EXPECT().Read(gomock.Any()).Return(len(cliPkt), nil).SetArg(0, cliPkt).AnyTimes()
-	mockClientIfce.EXPECT().Write(srvPkt).Return(1, nil).AnyTimes()
 
 	if err := client.Start(); err != nil {
 		t.Fatal(err)
