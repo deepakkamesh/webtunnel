@@ -18,12 +18,19 @@
 # Option parsing and default values
 ssh_command="ssh"
 scp_command="scp"
+# those are for Debian/Ubuntu, RHEL may differ
+ssl_cert="/etc/ssl/certs/ssl-cert-snakeoil.pem"
+ssl_key="/etc/ssl/private/ssl-cert-snakeoil.key"
 
 while getopts ":s:c:" opt; do
   case $opt in
     s) ssh_command="$OPTARG"
        ;;
     c) scp_command="$OPTARG"
+       ;;
+    t) ssl_cert="$OPTARG"
+       ;;
+    k) ssl_key="$OPTARG"
        ;;
     \?) echo "Invalid option: -$OPTARG" >&2
         exit 1
@@ -60,8 +67,13 @@ function setup_server() {
   $scp_command server $remotehost:~/
   # you may need some time to ssh to the remote host to put your sudo password
   # so nc will start only 3 minutes later
-  gnome-terminal -- bash -c "$ssh_command -t $remotehost \"echo Server session; sudo ./server -httpsCertFile /etc/ssl/certs/ssl-cert-snakeoil.pem -httpsKeyFile /etc/ssl/private/ssl-cert-snakeoil.key\""
-  gnome-terminal -- bash -c "$ssh_command -t $remotehost \"echo Listener waiting...; sleep 45; echo Listening...; nc -l -k 172.16.0.2 4567\""
+  gnome-terminal -- bash -c "$ssh_command -t $remotehost \
+    \"echo Server session; \
+    sudo if config lo:1 172.16.0.2 netmask 255.255.255.252; \
+    sudo ./server -httpsCertFile $ssl_cert \
+    -httpsKeyFile $ssl_key\""
+  gnome-terminal -- bash -c "$ssh_command -t $remotehost \
+    \"echo Listener waiting...; sleep 45; echo Listening...; nc -l -k 172.16.0.2 4567\""
 
 }
 
