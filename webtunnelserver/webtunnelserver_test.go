@@ -37,6 +37,7 @@ func TestServer(t *testing.T) {
 	//  Test server init.
 	mockInterface.EXPECT().Name().Return("virt0").AnyTimes()
 	mockInterface.EXPECT().IsTAP().Return(false).AnyTimes()
+
 	server, err := NewWebTunnelServer("127.0.0.1:8811", "192.168.0.1",
 		"255.255.255.0", "192.168.0.0/24", []string{"1.1.1.1"}, []string{"1.1.1.0/24"}, false, "", "")
 	if err != nil {
@@ -58,55 +59,61 @@ func TestServer(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Test Get config from server.
-	if err = c.WriteMessage(websocket.TextMessage, []byte("getConfig user hostname")); err != nil {
-		t.Error(err)
-	}
-	cfg := &wc.ClientConfig{}
-	if err := c.ReadJSON(cfg); err != nil {
-		t.Error(err)
-	}
+	t.Run("ClientConfiguration", func(t *testing.T) {
+		// Test Get config from server.
+		if err = c.WriteMessage(websocket.TextMessage, []byte("getConfig user hostname")); err != nil {
+			t.Error(err)
+		}
+		cfg := &wc.ClientConfig{}
+		if err := c.ReadJSON(cfg); err != nil {
+			t.Error(err)
+		}
 
-	allocations := server.DumpAllocations()
-	data := allocations["192.168.0.2"]
+		allocations := server.DumpAllocations()
+		data := allocations["192.168.0.2"]
 
-	if data.username != "user" {
-		t.Errorf("Expected user, got: %v", data.username)
-	}
+		if data.username != "user" {
+			t.Errorf("Expected user, got: %v", data.username)
+		}
 
-	if data.hostname != "hostname" {
-		t.Errorf("Expected hostname, got: %v", data.hostname)
-	}
+		if data.hostname != "hostname" {
+			t.Errorf("Expected hostname, got: %v", data.hostname)
+		}
 
-	if cfg.IP != "192.168.0.2" {
-		t.Errorf("config failed want 192.168.0.2, got %s", cfg.IP)
-	}
+		if cfg.IP != "192.168.0.2" {
+			t.Errorf("config failed want 192.168.0.2, got %s", cfg.IP)
+		}
+	})
 
-	// Test packet from server -> client.
-	_, b, err := c.ReadMessage()
-	if err != nil {
-		t.Error(err)
-	}
-	packet := gopacket.NewPacket(b, layers.LayerTypeIPv4, gopacket.Default)
-	ip, _ := packet.Layer(layers.LayerTypeIPv4).(*layers.IPv4)
-	if !net.IP.Equal(ip.SrcIP, net.IP{1, 1, 1, 1}) {
-		t.Errorf("Write failed: Got %v Expect %v", ip.SrcIP, net.IP{1, 1, 1, 1})
-	}
 
-	// Test packet from client -> server.
-	mockInterface.EXPECT().Write([]byte{1, 3, 3}).Return(1, nil).Times(1)
-	if err = c.WriteMessage(websocket.BinaryMessage, []byte{1, 3, 3}); err != nil {
-		t.Error(err)
-	}
+	t.Run("PacketHandling", func(t *testing.T) {
+		// Test packet from server -> client.
+		_, b, err := c.ReadMessage()
+		if err != nil {
+			t.Error(err)
+		}
+		packet := gopacket.NewPacket(b, layers.LayerTypeIPv4, gopacket.Default)
+		ip, _ := packet.Layer(layers.LayerTypeIPv4).(*layers.IPv4)
+		if !net.IP.Equal(ip.SrcIP, net.IP{1, 1, 1, 1}) {
+			t.Errorf("Write failed: Got %v Expect %v", ip.SrcIP, net.IP{1, 1, 1, 1})
+		}
 
-	// Test User Metrics status
-	metric := server.GetMetrics()
-	if metric.MaxUsers != 253 {
-		t.Errorf("MaxUsers expected: 253, got: %v", metric.MaxUsers)
-	}
-	if metric.Users != 1 {
-		t.Errorf("Users expected: 1, got: %v", metric.Users)
-	}
+		// Test packet from client -> server.
+		mockInterface.EXPECT().Write([]byte{1, 3, 3}).Return(1, nil).Times(1)
+		if err = c.WriteMessage(websocket.BinaryMessage, []byte{1, 3, 3}); err != nil {
+			t.Error(err)
+		}
+
+		// Test User Metrics status
+		metric := server.GetMetrics()
+		if metric.MaxUsers != 253 {
+			t.Errorf("MaxUsers expected: 253, got: %v", metric.MaxUsers)
+		}
+		if metric.Users != 1 {
+			t.Errorf("Users expected: 1, got: %v", metric.Users)
+		}
+	})
+
 
 	// Close connection.
 	err = c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
