@@ -37,31 +37,34 @@ func TestServer(t *testing.T) {
 	//  Test server init.
 	mockInterface.EXPECT().Name().Return("virt0").AnyTimes()
 	mockInterface.EXPECT().IsTAP().Return(false).AnyTimes()
+	var server *WebTunnelServer
+	var c *websocket.Conn
+	t.Run("ServerInit", func(t *testing.T) {
+		var err error
+		server, err = NewWebTunnelServer("127.0.0.1:8811", "192.168.0.1",
+			"255.255.255.0", "192.168.0.0/24", []string{"1.1.1.1"}, []string{"1.1.1.0/24"}, false, "", "")
+		if err != nil {
+			glog.Fatalf("%s", err)
+		}
+		// Load packet to send to client.
+		pkt := createIPv4Pkt(net.IP{1, 1, 1, 1}, net.IP{192, 168, 0, 2})
+		mockInterface.EXPECT().Read(gomock.Any()).Return(len(pkt), nil).SetArg(0, pkt).AnyTimes()
 
-	server, err := NewWebTunnelServer("127.0.0.1:8811", "192.168.0.1",
-		"255.255.255.0", "192.168.0.0/24", []string{"1.1.1.1"}, []string{"1.1.1.0/24"}, false, "", "")
-	if err != nil {
-		glog.Fatalf("%s", err)
-	}
+		// Start Server.
+		server.Start()
+		time.Sleep(1 * time.Second)
 
-	// Load packet to send to client.
-	pkt := createIPv4Pkt(net.IP{1, 1, 1, 1}, net.IP{192, 168, 0, 2})
-	mockInterface.EXPECT().Read(gomock.Any()).Return(len(pkt), nil).SetArg(0, pkt).AnyTimes()
-
-	// Start Server.
-	server.Start()
-	time.Sleep(1 * time.Second)
-
-	// Initialize a websocket client.
-	u := url.URL{Scheme: "ws", Host: "127.0.0.1:8811", Path: "/ws"}
-	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+		// Initialize a websocket client.
+		u := url.URL{Scheme: "ws", Host: "127.0.0.1:8811", Path: "/ws"}
+		c, _, err = websocket.DefaultDialer.Dial(u.String(), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
 
 	t.Run("ClientConfiguration", func(t *testing.T) {
 		// Test Get config from server.
-		if err = c.WriteMessage(websocket.TextMessage, []byte("getConfig user hostname")); err != nil {
+		if err := c.WriteMessage(websocket.TextMessage, []byte("getConfig user hostname")); err != nil {
 			t.Error(err)
 		}
 		cfg := &wc.ClientConfig{}
@@ -113,18 +116,20 @@ func TestServer(t *testing.T) {
 		}
 	})
 
-	// Close connection.
-	err = c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
-	if err != nil {
-		t.Error(err)
-	}
-	time.Sleep(time.Second)
-	c.Close()
+	t.Run("CloseConnectionAndStopServer", func(t *testing.T) {
+		// Close connection.
+		err := c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+		if err != nil {
+			t.Error(err)
+		}
+		time.Sleep(time.Second)
+		c.Close()
 
-	// gracefully ending the server after the client connection is finished
-	// will close the TUN interface
-	mockInterface.EXPECT().Close()
-	server.Stop()
+		// gracefully ending the server after the client connection is finished
+		// will close the TUN interface
+		mockInterface.EXPECT().Close()
+		server.Stop()
+	})
 
 	// Sleep for sometime to read all messages.
 	ticker := time.NewTicker(1 * time.Second)
