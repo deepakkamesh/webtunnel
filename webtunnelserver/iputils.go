@@ -74,10 +74,10 @@ func (i *IPPam) GetAllocatedCount() int {
 }
 
 // Check if an IP requested is valid in the network
-func (ipam *IPPam) isValidIP(ipAddr string) bool {
+func (i *IPPam) isValidIP(ipAddr string) bool {
 	ip := net.ParseIP(ipAddr)
 	if ip == nil {
-			return false // Invalid format
+		return false // Invalid format
 	}
 	return ipam.ipnet.Contains(ip)
 }
