@@ -12,6 +12,7 @@ import (
 // DNSForwarder represents a DNS forwarder.
 type DNSForwarder struct {
 	handle *net.UDPConn
+	stop   bool
 }
 
 // NewDNSForwarder returns a new initialized DNS forwarder.
@@ -24,6 +25,7 @@ func NewDNSForwarder(ip string, port int) (*DNSForwarder, error) {
 
 	return &DNSForwarder{
 		handle: h,
+		stop:   false,
 	}, nil
 }
 
@@ -32,9 +34,18 @@ func (d *DNSForwarder) Start() {
 	go d.listenServ()
 }
 
+// Stop stops the dns forwarder.
+func (d *DNSForwarder) Stop() {
+	d.stop = true
+}
+
 func (d *DNSForwarder) listenServ() {
 	pkt := make([]byte, 2048)
 	for {
+		if d.stop {
+			d.handle.Close()
+			return
+		}
 
 		_, peerAddr, err := d.handle.ReadFrom(pkt)
 		if err != nil {
@@ -46,6 +57,12 @@ func (d *DNSForwarder) listenServ() {
 		dnsReq, ok := gopacket.NewPacket(pkt, layers.LayerTypeDNS, gopacket.Default).Layer(layers.LayerTypeDNS).(*layers.DNS)
 		if !ok {
 			glog.Warning("Not a valid DNS request")
+			continue
+		}
+
+		if len(dnsReq.Questions) < 1 {
+			// we don't want to panic in case of a well formed DNS request with empty Questions field
+			glog.Warning("DNS request Questions empty, ignoring...")
 			continue
 		}
 
