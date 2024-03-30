@@ -79,7 +79,7 @@ func (i *IPPam) isValidIP(ipAddr string) bool {
 	if ip == nil {
 		return false // Invalid format
 	}
-	return ipam.ipnet.Contains(ip)
+	return i.ipnet.Contains(ip)
 }
 
 // AcquireIP gets a free IP and marks the status as requested. SetIPactive should be called
