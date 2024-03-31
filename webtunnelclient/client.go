@@ -546,17 +546,7 @@ func (w *WebtunnelClient) handleDHCP(packet gopacket.Packet) error {
 	eth := packet.Layer(layers.LayerTypeEthernet).(*layers.Ethernet)
 
 	// Get relevant info from DHCP request options.
-	var msgType layers.DHCPMsgType
-	var reqIP net.IP
-	for _, v := range dhcp.Options {
-		if v.Type == layers.DHCPOptMessageType {
-			msgType = layers.DHCPMsgType(v.Data[0])
-		}
-		if v.Type == layers.DHCPOptRequestIP {
-			reqIP = net.IP(v.Data)
-		}
-
-	}
+	msgType, reqIP := getDHCPRequestInfo(dhcp)
 
 	var dhcpl = &layers.DHCPv4{
 		Operation:    layers.DHCPOpReply,
@@ -586,6 +576,33 @@ func (w *WebtunnelClient) handleDHCP(packet gopacket.Packet) error {
 	}
 
 	// Construct and send DHCP Packet.
+	err := w.sendDHCPReply(ipv4, udp, dhcpl)
+	if err != nil {
+		// Gracefully exit goroutine.
+		if w.isStopped {
+			return nil
+		}
+		return err
+	}
+
+	return nil
+}
+
+func getDHCPRequestInfo(dhcp *layers.DHCPv4) (layers.DHCPMsgType, net.IP) {
+	var msgType layers.DHCPMsgType
+	var reqIP net.IP
+	for _, v := range dhcp.Options {
+		if v.Type == layers.DHCPOptMessageType {
+			msgType = layers.DHCPMsgType(v.Data[0])
+		}
+		if v.Type == layers.DHCPOptRequestIP {
+			reqIP = net.IP(v.Data)
+		}
+	}
+	return msgType, reqIP
+}
+
+func (w *WebtunnelClient) sendDHCPReply(ipv4 *layers.IPv4, udp *layers.UDP, dhcpl *layers.DHCPv4) error {
 	opts := gopacket.SerializeOptions{FixLengths: true, ComputeChecksums: true}
 	ethl := &layers.Ethernet{
 		SrcMAC:       w.ifce.GWHWAddr,
@@ -615,13 +632,8 @@ func (w *WebtunnelClient) handleDHCP(packet gopacket.Packet) error {
 	_, err := w.ifce.Write(buffer.Bytes())
 	w.ifWriteLock.Unlock()
 	if err != nil {
-		// Gracefully exit goroutine.
-		if w.isStopped {
-			return nil
-		}
 		return err
 	}
-
 	return nil
 }
 
