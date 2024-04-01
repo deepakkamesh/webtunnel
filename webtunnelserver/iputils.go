@@ -77,7 +77,7 @@ func (i *IPPam) GetAllocatedCount() int {
 func (i *IPPam) isValidIP(ipAddr string) bool {
 	ip := net.ParseIP(ipAddr)
 	if ip == nil {
-			return false // Invalid format
+		return false // Invalid format
 	}
 	return i.ipnet.Contains(ip)
 }

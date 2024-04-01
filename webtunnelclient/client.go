@@ -98,6 +98,7 @@ func NewWebtunnelClient(serverIPPort string, wsDialer *websocket.Dialer,
 	if isTap {
 		devType = water.DeviceType(water.TAP)
 	}
+	glog.V(2).Infof("DeviceType: %v", devType)
 
 	return &WebtunnelClient{
 		Error:        make(chan error),
@@ -154,10 +155,12 @@ func (w *WebtunnelClient) Start() error {
 		DeviceType: w.devType,
 	}
 	if w.isTap && (w.customTapParam != nil) {
+		glog.V(2).Infof("Overriding custom Tap Param with %v", *w.customTapParam)
 		wtConfig.PlatformSpecificParams = *w.customTapParam
 	}
 
 	// Start network interface.
+	glog.V(2).Info("Initialize TAP network interface")
 	handle, err := NewWaterInterface(wtConfig)
 	if err != nil {
 		return fmt.Errorf("error creating int %s", err)
@@ -168,6 +171,7 @@ func (w *WebtunnelClient) Start() error {
 	}
 
 	// Configure network interface.
+	glog.V(2).Info("Configure network interface")
 	err = w.configureInterface()
 	if err != nil {
 		return err
@@ -543,17 +547,7 @@ func (w *WebtunnelClient) handleDHCP(packet gopacket.Packet) error {
 	eth := packet.Layer(layers.LayerTypeEthernet).(*layers.Ethernet)
 
 	// Get relevant info from DHCP request options.
-	var msgType layers.DHCPMsgType
-	var reqIP net.IP
-	for _, v := range dhcp.Options {
-		if v.Type == layers.DHCPOptMessageType {
-			msgType = layers.DHCPMsgType(v.Data[0])
-		}
-		if v.Type == layers.DHCPOptRequestIP {
-			reqIP = net.IP(v.Data)
-		}
-
-	}
+	msgType, reqIP := getDHCPRequestInfo(dhcp)
 
 	var dhcpl = &layers.DHCPv4{
 		Operation:    layers.DHCPOpReply,
@@ -583,6 +577,33 @@ func (w *WebtunnelClient) handleDHCP(packet gopacket.Packet) error {
 	}
 
 	// Construct and send DHCP Packet.
+	err := w.sendDHCPReply(ipv4, udp, dhcpl)
+	if err != nil {
+		// Gracefully exit goroutine.
+		if w.isStopped {
+			return nil
+		}
+		return err
+	}
+
+	return nil
+}
+
+func getDHCPRequestInfo(dhcp *layers.DHCPv4) (layers.DHCPMsgType, net.IP) {
+	var msgType layers.DHCPMsgType
+	var reqIP net.IP
+	for _, v := range dhcp.Options {
+		if v.Type == layers.DHCPOptMessageType {
+			msgType = layers.DHCPMsgType(v.Data[0])
+		}
+		if v.Type == layers.DHCPOptRequestIP {
+			reqIP = net.IP(v.Data)
+		}
+	}
+	return msgType, reqIP
+}
+
+func (w *WebtunnelClient) sendDHCPReply(ipv4 *layers.IPv4, udp *layers.UDP, dhcpl *layers.DHCPv4) error {
 	opts := gopacket.SerializeOptions{FixLengths: true, ComputeChecksums: true}
 	ethl := &layers.Ethernet{
 		SrcMAC:       w.ifce.GWHWAddr,
@@ -612,13 +633,8 @@ func (w *WebtunnelClient) handleDHCP(packet gopacket.Packet) error {
 	_, err := w.ifce.Write(buffer.Bytes())
 	w.ifWriteLock.Unlock()
 	if err != nil {
-		// Gracefully exit goroutine.
-		if w.isStopped {
-			return nil
-		}
 		return err
 	}
-
 	return nil
 }
 
@@ -633,23 +649,7 @@ func (w *WebtunnelClient) handleArp(packet gopacket.Packet) error {
 		return nil
 	}
 
-	// Construct and send ARP response.
-	arpl := &layers.ARP{
-		AddrType:          arp.AddrType,
-		Protocol:          arp.Protocol,
-		HwAddressSize:     arp.HwAddressSize,
-		ProtAddressSize:   arp.ProtAddressSize,
-		Operation:         layers.ARPReply,
-		SourceHwAddress:   w.ifce.GWHWAddr,
-		SourceProtAddress: arp.DstProtAddress,
-		DstHwAddress:      arp.SourceHwAddress,
-		DstProtAddress:    arp.SourceProtAddress,
-	}
-	ethl := &layers.Ethernet{
-		SrcMAC:       w.ifce.GWHWAddr,
-		DstMAC:       eth.SrcMAC,
-		EthernetType: layers.EthernetTypeARP,
-	}
+	arpl, ethl := w.extractArpDetails(arp, eth)
 
 	// If the reply if for the VM TAP IP the source HW must be the TAP interface MAC addr
 	// Otherwise some Os could detect IP conflicts
@@ -662,6 +662,40 @@ func (w *WebtunnelClient) handleArp(packet gopacket.Packet) error {
 		ethl.SrcMAC = w.ifce.LocalHWAddr
 	}
 
+	err := w.sendArpReply(arpl, ethl)
+	if err != nil {
+		// Gracefully exit goroutine.
+		if w.isStopped {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
+func (w *WebtunnelClient) extractArpDetails(arp *layers.ARP, eth *layers.Ethernet) (*layers.ARP, *layers.Ethernet) {
+
+	// Construct and send ARP response.
+	arpl := layers.ARP{
+		AddrType:          arp.AddrType,
+		Protocol:          arp.Protocol,
+		HwAddressSize:     arp.HwAddressSize,
+		ProtAddressSize:   arp.ProtAddressSize,
+		Operation:         layers.ARPReply,
+		SourceHwAddress:   w.ifce.GWHWAddr,
+		SourceProtAddress: arp.DstProtAddress,
+		DstHwAddress:      arp.SourceHwAddress,
+		DstProtAddress:    arp.SourceProtAddress,
+	}
+	ethl := layers.Ethernet{
+		SrcMAC:       w.ifce.GWHWAddr,
+		DstMAC:       eth.SrcMAC,
+		EthernetType: layers.EthernetTypeARP,
+	}
+	return &arpl, &ethl
+}
+
+func (w *WebtunnelClient) sendArpReply(arpl *layers.ARP, ethl *layers.Ethernet) error {
 	opts := gopacket.SerializeOptions{FixLengths: true, ComputeChecksums: true}
 	buffer := gopacket.NewSerializeBuffer()
 	if err := gopacket.SerializeLayers(buffer, opts, ethl, arpl); err != nil {
@@ -672,10 +706,6 @@ func (w *WebtunnelClient) handleArp(packet gopacket.Packet) error {
 	_, err := w.ifce.Write(buffer.Bytes())
 	w.ifWriteLock.Unlock()
 	if err != nil {
-		// Gracefully exit goroutine.
-		if w.isStopped {
-			return nil
-		}
 		return err
 	}
 	return nil

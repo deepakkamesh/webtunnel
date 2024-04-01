@@ -71,7 +71,7 @@ func TestClient(t *testing.T) {
 	}
 
 	server.Start()
-	defer server.Stop()
+
 	// Give server a bit to startup.
 	time.Sleep(1 * time.Second)
 
@@ -108,7 +108,9 @@ func TestClient(t *testing.T) {
 	if err := client.Start(); err != nil {
 		t.Fatal(err)
 	}
-	// Some sleep to process the packets.
+	mockServerIfce.EXPECT().Close()
+	server.Stop()
+	// Some sleep to process the packets and stop gracefully
 	time.Sleep(3 * time.Second)
 }
 

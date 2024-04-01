@@ -29,3 +29,6 @@ func InitializeOS(cfg *webtunnelclient.Interface) error {
 	}
 	return nil
 }
+
+func clientPlatformSpecifics(client *webtunnelclient.WebtunnelClient) {
+}
