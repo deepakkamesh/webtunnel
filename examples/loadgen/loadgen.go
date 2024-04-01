@@ -43,7 +43,7 @@ func (i *fakeIterface) Read(d []byte) (int, error) {
 	opts := gopacket.SerializeOptions{FixLengths: true, ComputeChecksums: true}
 	gopacket.SerializeLayers(buf, opts,
 		&layers.IPv4{
-			SrcIP:    *i.SrcIP, //net.IP{192, 168, 0, 2},
+			SrcIP:    *i.SrcIP, // net.IP{192, 168, 0, 2},
 			DstIP:    net.IP{192, 168, 0, 1},
 			Protocol: layers.IPProtocolICMPv4,
 			Version:  4,
