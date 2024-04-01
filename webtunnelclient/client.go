@@ -155,6 +155,7 @@ func (w *WebtunnelClient) Start() error {
 		DeviceType: w.devType,
 	}
 	if w.isTap && (w.customTapParam != nil) {
+		glog.V(2).Infof("Overriding custom Tap Param with %v", *w.customTapParam)
 		wtConfig.PlatformSpecificParams = *w.customTapParam
 	}
 

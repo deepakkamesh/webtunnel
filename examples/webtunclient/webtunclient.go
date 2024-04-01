@@ -6,6 +6,7 @@ import (
 	"flag"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 
 	"github.com/deepakkamesh/webtunnel/webtunnelclient"
@@ -28,11 +29,18 @@ func main() {
 	wsDialer.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 
 	// Initialize the client.
+	isTap := false
+	var leaseTime uint32 = 300
+	if runtime.GOOS == "windows" {
+		isTap = true
+		leaseTime = 3000
+	}
 	client, err := webtunnelclient.NewWebtunnelClient(*webtunServer, &wsDialer,
-		false, InitializeOS, true, 30)
+		isTap, InitializeOS, true, leaseTime)
 	if err != nil {
 		glog.Exitf("Failed to initialize client: %s", err)
 	}
+	clientPlatformSpecifics(client)
 
 	// Start the client.
 	if err := client.Start(); err != nil {
