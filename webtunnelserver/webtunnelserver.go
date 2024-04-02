@@ -60,7 +60,7 @@ type WebTunnelServer struct {
 	customHTTPHandlers map[string]http.Handler    // Array of custom HTTP handlers.
 	metricsLock        sync.Mutex                 // Mutex for metrics write
 	connMapLock        sync.Mutex                 // Mutex for Connection Map
-	turnOff            bool                       // Flag to signal server should shutdown
+	isStopped            bool                       // Flag to signal server should shutdown
 }
 
 /*
@@ -126,7 +126,7 @@ func NewWebTunnelServer(serverIPPort, gwIP, tunNetmask, clientNetPrefix string, 
 		metrics:            metrics,
 		secure:             secure,
 		customHTTPHandlers: make(map[string]http.Handler),
-		turnOff:            false,
+		isStopped:            false,
 	}, nil
 }
 
@@ -186,7 +186,7 @@ func (r *WebTunnelServer) serveClients() {
 // the Server Caller that the whole serving process is ended
 func (r *WebTunnelServer) Stop() {
 	glog.V(1).Info("Shutting down Server gracefully")
-	r.turnOff = true
+	r.isStopped = true
 }
 
 // PongHandler handles the pong messages from a client
@@ -206,7 +206,7 @@ func (r *WebTunnelServer) processPings() {
 	glog.Info("Pings processing routine active")
 	time.Sleep(60 * time.Second)
 	for {
-		if r.turnOff {
+		if r.isStopped {
 			glog.V(1).Info("Exiting Ping routine")
 			return
 		}
@@ -239,7 +239,7 @@ func (r *WebTunnelServer) processTUNPacket() {
 	var oPkt []byte
 
 	for {
-		if r.turnOff {
+		if r.isStopped {
 			glog.V(1).Info("Exiting TUN interface routine")
 			err := r.ifce.Close()
 			if err != nil {
@@ -323,7 +323,7 @@ func (r *WebTunnelServer) wsEndpoint(w http.ResponseWriter, rcv *http.Request) {
 
 	// Process websocket packet.
 	for {
-		if r.turnOff {
+		if r.isStopped {
 			glog.V(1).Infof("Exiting websocket processing for ip: %v", ip)
 			return
 		}
