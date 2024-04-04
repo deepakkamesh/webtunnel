@@ -66,7 +66,7 @@ type WebtunnelClient struct {
 	scheme         string                        // Websocket Scheme.
 	leaseTime      uint32                        // DHCP lease time.
 	session        string                        // Session Tracker from Server
-	isTap          bool                          // Is the webclient using a TAP interface
+	useTap          bool                          // Is the webclient using a TAP interface - default is to use TUN type on creation some platforms may not support TUN and must have this flag set to true
 	customTapParam *water.PlatformSpecificParams // Tap driver specific parameters
 }
 
@@ -83,10 +83,10 @@ f: User callback function for any OS initialization (eg. manual routes etc) most
 
 secure: Enable secure websocket connection
 
-leaseTime: If TAP, the DHCP lease time in seconds.
+leaseTime: If TAP, the DHCP lease time in seconds. Make sure to use a big enough value on Windows.
 */
 func NewWebtunnelClient(serverIPPort string, wsDialer *websocket.Dialer,
-	isTap bool, f func(*Interface) error,
+	useTap bool, f func(*Interface) error,
 	secure bool, leaseTime uint32) (*WebtunnelClient, error) {
 
 	scheme := "ws"
@@ -95,7 +95,7 @@ func NewWebtunnelClient(serverIPPort string, wsDialer *websocket.Dialer,
 	}
 
 	devType := water.DeviceType(water.TUN)
-	if isTap {
+	if useTap {
 		devType = water.DeviceType(water.TAP)
 	}
 	glog.V(2).Infof("DeviceType: %v", devType)
@@ -111,7 +111,7 @@ func NewWebtunnelClient(serverIPPort string, wsDialer *websocket.Dialer,
 		scheme:       scheme,
 		leaseTime:    leaseTime,
 		userInitFunc: f,
-		isTap:        isTap,
+		useTap:        useTap,
 	}, nil
 }
 
@@ -154,7 +154,7 @@ func (w *WebtunnelClient) Start() error {
 	wtConfig := water.Config{
 		DeviceType: w.devType,
 	}
-	if w.isTap && (w.customTapParam != nil) {
+	if w.useTap && (w.customTapParam != nil) {
 		glog.V(2).Infof("Overriding custom Tap Param with %v", *w.customTapParam)
 		wtConfig.PlatformSpecificParams = *w.customTapParam
 	}
@@ -400,7 +400,7 @@ func (w *WebtunnelClient) processWSPacket() {
 		wc.PrintPacketIPv4(pkt, "Client <- WebSocket")
 
 		// Wrap packet in Ethernet header before sending if TAP.
-		if w.ifce.IsTAP() {
+		if w.ifce.useTap() {
 			packet := gopacket.NewPacket(pkt, layers.LayerTypeIPv4, gopacket.Default)
 			ipv4 := packet.Layer(layers.LayerTypeIPv4).(*layers.IPv4)
 
@@ -457,7 +457,7 @@ func (w *WebtunnelClient) processNetPacket() {
 		w.updateMetricsForPacket(n)
 
 		// Special handling for TAP; ARP/DHCP.
-		if w.ifce.IsTAP() {
+		if w.ifce.useTap() {
 			packet := gopacket.NewPacket(oPkt, layers.LayerTypeEthernet, gopacket.Default)
 			if _, ok := packet.Layer(layers.LayerTypeARP).(*layers.ARP); ok {
 				if err := w.handleArp(packet); err != nil {
