@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
+	"runtime"
 	"time"
 
 	"github.com/deepakkamesh/webtunnel/webtunnelclient"
@@ -43,9 +44,16 @@ func NewclientUI() *Clientui {
 		glog.Exit(err)
 	}
 
+	isTap := false
+	var leaseTime uint32 = 300
+	if runtime.GOOS == "windows" {
+		isTap = true
+		leaseTime = 3000
+	}
+
 	// Initialize the client.
 	client, err := webtunnelclient.NewWebtunnelClient(*webtunServer, &websocket.Dialer{},
-		false, InitializeOS, true, 30)
+		isTap, InitializeOS, true, leaseTime)
 	if err != nil {
 		return nil
 	}
