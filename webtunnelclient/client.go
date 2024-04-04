@@ -400,7 +400,7 @@ func (w *WebtunnelClient) processWSPacket() {
 		wc.PrintPacketIPv4(pkt, "Client <- WebSocket")
 
 		// Wrap packet in Ethernet header before sending if TAP.
-		if w.ifce.isTap() {
+		if w.ifce.IsTAP() {
 			packet := gopacket.NewPacket(pkt, layers.LayerTypeIPv4, gopacket.Default)
 			ipv4 := packet.Layer(layers.LayerTypeIPv4).(*layers.IPv4)
 
@@ -457,7 +457,7 @@ func (w *WebtunnelClient) processNetPacket() {
 		w.updateMetricsForPacket(n)
 
 		// Special handling for TAP; ARP/DHCP.
-		if w.ifce.isTap() {
+		if w.ifce.IsTAP() {
 			packet := gopacket.NewPacket(oPkt, layers.LayerTypeEthernet, gopacket.Default)
 			if _, ok := packet.Layer(layers.LayerTypeARP).(*layers.ARP); ok {
 				if err := w.handleArp(packet); err != nil {
