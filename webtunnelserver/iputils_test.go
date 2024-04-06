@@ -12,10 +12,10 @@ func TestIP(t *testing.T) {
 		expectErrorCheck bool
 		expectedCount    int // If not expecting error
 	}{
-		{"10.0.0.0", true, 0},    // Should not acquire network IP
-		{"10.0.0.255", true, 0},  // Should not acquire broadcast IP
+		{"10.0.0.0", true, 0},   // Should not acquire network IP
+		{"10.0.0.255", true, 0}, // Should not acquire broadcast IP
 		{"10.0.0.1", false, 3},
-		{"10.0.0.1", true, 0},    // Cannot aquire same IP twice
+		{"10.0.0.1", true, 0}, // Cannot aquire same IP twice
 		{"10.0.0.25", false, 4},
 		{"192.168.0.1", true, 0}, // IP not in network
 		{"10.0.0", true, 0},      // Not a valid IP
@@ -48,7 +48,7 @@ func TestIP(t *testing.T) {
 		{"10.0.0.0", true, 0},   // Should not release network IP
 		{"10.0.0.255", true, 0}, // Should not release broadcast IP
 		{"10.0.0.1", false, 3},
-		{"10.0.0.1", true, 0},   // Should not release same IP twice
+		{"10.0.0.1", true, 0}, // Should not release same IP twice
 		{"10.0.0.25", false, 2},
 	}
 
@@ -71,12 +71,18 @@ func TestIP(t *testing.T) {
 }
 
 func TestGetMaxUsers(t *testing.T) {
-	a := getMaxUsers("192.168.0.0/24")
-	if a != 253 {
-		t.Errorf("Expected 253, got: %v", a)
+	testMaxUsers := []struct {
+		network  string
+		maxUsers int
+	}{
+		{"192.168.0.0/24", 253},
+		{"192.168.0.0/23", 509},
+		{"192.168.0.0/28", 13},
+		{"192.168.0.0/32", 0},
 	}
-	b := getMaxUsers("192.168.0.0/23")
-	if b != 509 {
-		t.Errorf("Expected 509, got: %v", b)
+	for _, tc := range testMaxUsers {
+		if v := getMaxUsers(tc.network); v != tc.maxUsers {
+			t.Errorf("Expected %v, got %v", tc.maxUsers, v)
+		}
 	}
 }

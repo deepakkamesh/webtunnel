@@ -25,8 +25,8 @@ type UserInfo struct {
 // ipData represents data associated for each IP.
 type ipData struct {
 	ipStatus int
-	data     interface{} // This field will point to the Websocket Connection object mapped to the IP
-	userinfo *UserInfo   // This field will be associated to the UserInfo object mapped to the IP
+	data     any       // This field will point to the Websocket Connection object mapped to the IP
+	userinfo *UserInfo // This field will be associated to the UserInfo object mapped to the IP
 }
 
 // IPPam represents a IP address mgmt struct
@@ -84,7 +84,7 @@ func (i *IPPam) isValidIP(ipAddr string) bool {
 
 // AcquireIP gets a free IP and marks the status as requested. SetIPactive should be called
 // to make the IP active. data can be used to store any data associated with the IP.
-func (i *IPPam) AcquireIP(data interface{}) (string, error) {
+func (i *IPPam) AcquireIP(data any) (string, error) {
 	i.lock.Lock()
 	defer i.lock.Unlock()
 
@@ -119,12 +119,15 @@ func (i *IPPam) SetIPActiveWithUserInfo(ip, username, hostname string) error {
 }
 
 // GetData returns the data associated with the IP.
-func (i *IPPam) GetData(ip string) (interface{}, error) {
+func (i *IPPam) GetData(ip string) (any, error) {
 	i.lock.Lock()
 	defer i.lock.Unlock()
 
-	if v, exists := i.allocations[ip]; !exists || v.ipStatus != ipStatusInUse {
-		return nil, fmt.Errorf("IP not available or not marked in use")
+	if _, exists := i.allocations[ip]; !exists {
+		return nil, fmt.Errorf("IP not allocated")
+	}
+	if v := i.allocations[ip]; v.ipStatus != ipStatusInUse {
+		return nil, fmt.Errorf("IP not marked in use")
 	}
 	return i.allocations[ip].data, nil
 }
@@ -171,7 +174,7 @@ func (i *IPPam) DumpAllocations() map[string]*UserInfo {
 }
 
 // AcquireSpecificIP acquires specific IP and marks it as in use.
-func (i *IPPam) AcquireSpecificIP(ip string, data interface{}) error {
+func (i *IPPam) AcquireSpecificIP(ip string, data any) error {
 	if ok := i.isValidIP(ip); !ok {
 		return fmt.Errorf("not a valid IP: %v", ip)
 	}
@@ -197,6 +200,7 @@ func inc(ip net.IP) {
 	}
 }
 
+// inc increments an IP address
 func lastAddr(n *net.IPNet) net.IP {
 	ip := make(net.IP, len(n.IP.To4()))
 	binary.BigEndian.PutUint32(ip, binary.BigEndian.Uint32(n.IP.To4())|^binary.BigEndian.Uint32(net.IP(n.Mask).To4()))
@@ -214,5 +218,8 @@ func getMaxUsers(clientNetPrefix string) int {
 	// Gateway will reject requests when the user count reaches 95%.
 	size, _ := ipnet.Mask.Size()
 	max := math.Pow(2, float64(32-size)) - 3 // router,network,broadcast allocations have to be remove from the count
+	if max < 0 {
+		max = 0
+	}
 	return int(max)
 }
