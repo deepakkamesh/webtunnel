@@ -123,8 +123,11 @@ func (i *IPPam) GetData(ip string) (any, error) {
 	i.lock.Lock()
 	defer i.lock.Unlock()
 
-	if v, exists := i.allocations[ip]; !exists || v.ipStatus != ipStatusInUse {
-		return nil, fmt.Errorf("IP not available or not marked in use")
+	if _, exists := i.allocations[ip]; !exists {
+		return nil, fmt.Errorf("IP not allocated")
+	}
+	if v := i.allocations[ip]; v.ipStatus != ipStatusInUse {
+		return nil, fmt.Errorf("IP not marked in use")
 	}
 	return i.allocations[ip].data, nil
 }
@@ -215,5 +218,8 @@ func getMaxUsers(clientNetPrefix string) int {
 	// Gateway will reject requests when the user count reaches 95%.
 	size, _ := ipnet.Mask.Size()
 	max := math.Pow(2, float64(32-size)) - 3 // router,network,broadcast allocations have to be remove from the count
+	if max < 0 {
+		max = 0
+	}
 	return int(max)
 }

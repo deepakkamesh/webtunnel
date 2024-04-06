@@ -60,7 +60,7 @@ type WebTunnelServer struct {
 	customHTTPHandlers map[string]http.Handler    // Array of custom HTTP handlers.
 	metricsLock        sync.Mutex                 // Mutex for metrics write
 	connMapLock        sync.Mutex                 // Mutex for Connection Map
-	isStopped            bool                       // Flag to signal server should shutdown
+	isStopped          bool                       // Flag to signal server should shutdown
 }
 
 /*
@@ -126,7 +126,7 @@ func NewWebTunnelServer(serverIPPort, gwIP, tunNetmask, clientNetPrefix string, 
 		metrics:            metrics,
 		secure:             secure,
 		customHTTPHandlers: make(map[string]http.Handler),
-		isStopped:            false,
+		isStopped:          false,
 	}, nil
 }
 
@@ -262,7 +262,7 @@ func (r *WebTunnelServer) processTUNPacket() {
 		ipDest := ip.DstIP.String()
 		data, err := r.ipam.GetData(ipDest) // data is the connection object linked to the IP
 		if err != nil {
-			glog.Warningf("unsolicited packet for IP:%v", ipDest)
+			glog.Warningf("unsolicited packet for IP:%v, cause: %v", ipDest, err)
 			continue
 		}
 
