@@ -31,6 +31,9 @@ var IsConfigured = wc.IsConfigured
 // GetMacbyName (Overridable) Get HW address.
 var GetMacbyName = wc.GetMacbyName
 
+// Default packet options
+var defaultPktOpts = gopacket.SerializeOptions{FixLengths: true, ComputeChecksums: true}
+
 // Interface represents the network interface and its related configuration.
 type Interface struct {
 	IP           net.IP           // IP address.
@@ -355,6 +358,24 @@ func (w *WebtunnelClient) IsInterfaceReady() bool {
 	return w.isNetReady
 }
 
+// wrapPacketForTap wraps the packet in Ethernet - for use only if interface
+// is of TAP type.
+func (w *WebtunnelClient) wrapWSPacketForTap(pkt []byte) ([]byte, error) {
+	packet := gopacket.NewPacket(pkt, layers.LayerTypeIPv4, gopacket.Default)
+	ipv4 := packet.Layer(layers.LayerTypeIPv4).(*layers.IPv4)
+
+	ethl := &layers.Ethernet{
+		SrcMAC:       w.ifce.GWHWAddr,
+		DstMAC:       w.ifce.LocalHWAddr,
+		EthernetType: layers.EthernetTypeIPv4,
+	}
+	buffer := gopacket.NewSerializeBuffer()
+	if err := gopacket.SerializeLayers(buffer, defaultPktOpts, ethl, ipv4, gopacket.Payload(ipv4.Payload)); err != nil {
+		return nil, err
+	}
+	return buffer.Bytes(), nil
+}
+
 // processWSPacket processes packets received from the Websocket connection and
 // writes to the network interface.
 func (w *WebtunnelClient) processWSPacket() {
@@ -369,8 +390,6 @@ func (w *WebtunnelClient) processWSPacket() {
 	w.ifce.LocalHWAddr = GetMacbyName(w.ifce.Name())
 	glog.V(1).Infof("Interface Ready.")
 	w.isNetReady = true
-
-	opts := gopacket.SerializeOptions{FixLengths: true, ComputeChecksums: true}
 
 	for {
 		// Skip if websocket is not ready - this means we are currently reconnecting
@@ -401,20 +420,12 @@ func (w *WebtunnelClient) processWSPacket() {
 
 		// Wrap packet in Ethernet header before sending if TAP.
 		if w.ifce.IsTAP() {
-			packet := gopacket.NewPacket(pkt, layers.LayerTypeIPv4, gopacket.Default)
-			ipv4 := packet.Layer(layers.LayerTypeIPv4).(*layers.IPv4)
-
-			ethl := &layers.Ethernet{
-				SrcMAC:       w.ifce.GWHWAddr,
-				DstMAC:       w.ifce.LocalHWAddr,
-				EthernetType: layers.EthernetTypeIPv4,
-			}
-			buffer := gopacket.NewSerializeBuffer()
-			if err := gopacket.SerializeLayers(buffer, opts, ethl, ipv4, gopacket.Payload(ipv4.Payload)); err != nil {
+			pkt, err = w.wrapWSPacketForTap(pkt)
+			if err != nil {
 				glog.Warningf("error serializelayer %s", err)
 				continue
 			}
-			pkt = buffer.Bytes()
+
 		}
 
 		// Send packet to network interface.
@@ -431,6 +442,36 @@ func (w *WebtunnelClient) processWSPacket() {
 		}
 		w.updateMetricsForPacket(n)
 	}
+}
+
+// handleNetPacketForTap contains the logic to handle packets received
+// by a TAP interface type. We need to handle 3 different packets types:
+// - dhcp
+// - arp
+// - ip
+// DHCP and ARP have their owner function handlers
+// In regards to IP packet we just strip the Ethernet header and go on
+// with processing/sending
+func (w *WebtunnelClient) handleNetPacketForTap(pkt []byte) ([]byte, error){
+	packet := gopacket.NewPacket(pkt, layers.LayerTypeEthernet, gopacket.Default)
+			if _, ok := packet.Layer(layers.LayerTypeARP).(*layers.ARP); ok {
+				if err := w.handleArp(packet); err != nil {
+					return nil, fmt.Errorf("err sending arp %v", err)
+				}
+			}
+			if _, ok := packet.Layer(layers.LayerTypeDHCPv4).(*layers.DHCPv4); ok {
+				if err := w.handleDHCP(packet); err != nil {
+					return nil, fmt.Errorf("err sending dhcp  %v", err)
+				}
+			}
+			// Only send IPv4 unicast packets to reduce noisy windows machines.
+			ipv4, ok := packet.Layer(layers.LayerTypeIPv4).(*layers.IPv4)
+			if !ok || ipv4.DstIP.IsMulticast() {
+				wc.PrintPacketIPv4(pkt, "Client  -> Websocket - droping non ipv4 packet")
+				return nil, nil
+			}
+			// Strip Ethernet header
+			return packet.Layer(layers.LayerTypeEthernet).(*layers.Ethernet).LayerPayload(), nil
 }
 
 // processNetPacket processes the packet from the network interface and dispatches
@@ -458,27 +499,15 @@ func (w *WebtunnelClient) processNetPacket() {
 
 		// Special handling for TAP; ARP/DHCP.
 		if w.ifce.IsTAP() {
-			packet := gopacket.NewPacket(oPkt, layers.LayerTypeEthernet, gopacket.Default)
-			if _, ok := packet.Layer(layers.LayerTypeARP).(*layers.ARP); ok {
-				if err := w.handleArp(packet); err != nil {
-					w.Error <- fmt.Errorf("err sending arp %v", err)
-				}
+			oPkt, err = w.handleNetPacketForTap(oPkt)
+			if err != nil {
+				w.Error <- err
+				return
+			}
+			// no error but nil packet means we are dropping it
+			if oPkt == nil {
 				continue
 			}
-			if _, ok := packet.Layer(layers.LayerTypeDHCPv4).(*layers.DHCPv4); ok {
-				if err := w.handleDHCP(packet); err != nil {
-					w.Error <- fmt.Errorf("err sending dhcp  %v", err)
-				}
-				continue
-			}
-			// Only send IPv4 unicast packets to reduce noisy windows machines.
-			ipv4, ok := packet.Layer(layers.LayerTypeIPv4).(*layers.IPv4)
-			if !ok || ipv4.DstIP.IsMulticast() {
-				wc.PrintPacketIPv4(oPkt, "Client  -> Websocket - droping non ipv4 packet")
-				continue
-			}
-			// Strip Ethernet header and send.
-			oPkt = packet.Layer(layers.LayerTypeEthernet).(*layers.Ethernet).LayerPayload()
 		}
 
 		wc.PrintPacketIPv4(oPkt, "Client  -> Websocket")
@@ -488,6 +517,7 @@ func (w *WebtunnelClient) processNetPacket() {
 		if err != nil {
 			// Gracefully exit goroutine.
 			if w.isStopped {
+				w.Error <- nil
 				return
 			}
 			w.Error <- fmt.Errorf("error writing to websocket: %s", err)
@@ -604,7 +634,6 @@ func getDHCPRequestInfo(dhcp *layers.DHCPv4) (layers.DHCPMsgType, net.IP) {
 }
 
 func (w *WebtunnelClient) sendDHCPReply(ipv4 *layers.IPv4, udp *layers.UDP, dhcpl *layers.DHCPv4) error {
-	opts := gopacket.SerializeOptions{FixLengths: true, ComputeChecksums: true}
 	ethl := &layers.Ethernet{
 		SrcMAC:       w.ifce.GWHWAddr,
 		DstMAC:       net.HardwareAddr{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF},
@@ -625,7 +654,7 @@ func (w *WebtunnelClient) sendDHCPReply(ipv4 *layers.IPv4, udp *layers.UDP, dhcp
 		return fmt.Errorf("error checksum %s", err)
 	}
 	buffer := gopacket.NewSerializeBuffer()
-	if err := gopacket.SerializeLayers(buffer, opts, ethl, ipv4l, udpl, dhcpl); err != nil {
+	if err := gopacket.SerializeLayers(buffer, defaultPktOpts, ethl, ipv4l, udpl, dhcpl); err != nil {
 		return fmt.Errorf("error serializelayer %s", err)
 	}
 	wc.PrintPacketEth(buffer.Bytes(), "DHCP Reply")
@@ -696,9 +725,8 @@ func (w *WebtunnelClient) extractArpDetails(arp *layers.ARP, eth *layers.Etherne
 }
 
 func (w *WebtunnelClient) sendArpReply(arpl *layers.ARP, ethl *layers.Ethernet) error {
-	opts := gopacket.SerializeOptions{FixLengths: true, ComputeChecksums: true}
 	buffer := gopacket.NewSerializeBuffer()
-	if err := gopacket.SerializeLayers(buffer, opts, ethl, arpl); err != nil {
+	if err := gopacket.SerializeLayers(buffer, defaultPktOpts, ethl, arpl); err != nil {
 		return fmt.Errorf("error Serializelayer %s", err)
 	}
 	wc.PrintPacketEth(buffer.Bytes(), "ARP Response")
