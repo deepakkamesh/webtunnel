@@ -41,7 +41,7 @@ func TestListenServ(t *testing.T) {
 	if err != nil {
 		// check if it's because of Non Existent domain - we can ignore this
 		// as this means the test environment is not processing DNS requests
-		if strings.Contains(err, "Non-Existent domain") {
+		if strings.Contains(err.Error(), "Non-Existent domain") {
 			return
 		}
 		t.Error(err)
